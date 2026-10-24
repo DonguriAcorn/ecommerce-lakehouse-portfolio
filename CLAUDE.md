@@ -12,6 +12,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 既定の進め方: 完成コードと1行ずつの説明を、先に示す。ユーザーが承認してから、ファイルを書く。ユーザーが「自分で書く」と言った部分は、骨組みとヒントだけを出し、書いたコードのレビューに回る。
 - ファイルは `cat > ファイル << 'EOF'`(上書き)で作る。追記(`>>`)は重複するので、使うときは、重複防止の確認(`grep -q ... ||`)を付ける。
 - Terraform は、`plan` の内容を読んで説明してから `apply` する。削除(`-`)や置き換え(`-/+`)が出たら、必ず理由を説明する。
+- 説明は、たとえ(例: 荷物の追跡スタンプ)と、実データの1〜2件の例を使い、かんたんな言葉から始める。ノートブックは1セル1処理にし、想定の出力をコメント(`# 出力:`)に書く。
 - 長いエラーや出力は、要点だけを扱う(トークンの節約)。
 - 設計判断は、docs/design と ADR(docs/adr)に残す。
 
@@ -48,16 +49,16 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 ## 現在の状態
 - AWS の土台(S3、Glue、Athena、2つの IAM ロール)は、dev に作成済み。コミットと push も済み。
 - Python の環境(uv)は作成済み。
-- ingestion/replay_orders.py(`load_orders` と `build_events`)は作成済みで、ruff は通過。コミット状況は、`git status -sb` で確認する。
+- ingestion/replay_orders.py(`load_orders` と `build_events`)は作成済みで、ruff は通過。コミットと push も済み。
 - orders のデータは data/olist/ にある。
-- ノートブック(notebooks/replay_orders_explore.ipynb)で、`build_events` の中身を確認する予定。VS Code を使わない場合は、ターミナルの `uv run python -c "..."` で確認してもよい。
+- `build_events` の結果を確認済み。出来事の合計は 394,713 件で、rank ごとの件数も想定どおり。手で再現した表とも完全に一致した。出力の形は、docs/design/orders-data-profile.md の「build_events の出力」を参照。
+- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。1セル1処理で、想定の出力を `# 出力:` のコメントに書いてある。
 
 ## 次にやること
-1. `build_events` の結果を確認する(出来事の合計の想定は 394,713 件。rank 0 は 99,441、rank 1 は 99,281、rank 2 は 97,658、rank 3 は 96,476、rank 4 は 1,857)。
-2. 日付ごとのスナップショットを作る。
-3. 日付ごとの Parquet に書き出す。
-4. ingest ロールで、raw/ に取り込む。
-5. Athena で Raw を読む外部テーブルを作り、Silver に MERGE する。
+1. 日付ごとのスナップショットを作る(日付 D までの出来事のうち、注文ごとに rank が最大のものを選び、D 時点の状態を作る)。
+2. 日付ごとの Parquet に書き出す。
+3. ingest ロールで、raw/ に取り込む。
+4. Athena で Raw を読む外部テーブルを作り、Silver に MERGE する。
 - そのあと: 権限の整理(OIDC、deployer)、モジュール化、test と prod、Airflow、dbt、ADR。
 
 ## 未解決
