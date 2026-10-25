@@ -1,4 +1,4 @@
-# プロジェクトの引き継ぎメモ(更新: 2026-10-24)
+# プロジェクトの引き継ぎメモ(更新: 2026-10-25)
 
 ## 目的
 データエンジニアのポートフォリオ。EC データ(Olist)を、取り込み → 整形 → 集計 → Streamlit のダッシュボードと AI アナリストまで流す。要件、スコープ、フェーズ計画の詳細は、Claude のドキュメント「データエンジニア ポートフォリオ 引き継ぎドキュメント」を参照する(リポジトリに docs/handoff.md として保存した場合は、そちらを読む)。
@@ -30,7 +30,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 ## リポジトリの構成
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf(test と prod は、モジュール化のあとで作る)
-- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders と build_events)
+- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、build_events、build_snapshot、write_snapshot)
 - docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md
 - docs/adr: 設計判断の記録(フェーズ1の終わりに書く)
 - notebooks: 確認用のノートブック(Git の管理外)
@@ -49,16 +49,18 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 ## 現在の状態
 - AWS の土台(S3、Glue、Athena、2つの IAM ロール)は、dev に作成済み。コミットと push も済み。
 - Python の環境(uv)は作成済み。
-- ingestion/replay_orders.py(`load_orders` と `build_events`)は作成済みで、ruff は通過。コミットと push も済み。
+- ingestion/replay_orders.py に、4つの関数がそろった。ruff(check と format)は通過。コミットと push も済み。
+  - `load_orders` と `build_events`: 出来事の合計は 394,713 件で、確認済み。
+  - `build_snapshot`: 日付 D に出来事があった注文を、D 時点の状態で返す。リプレイの日数は 696 日(2016-09-04 〜 2018-10-18)で、全日の合計は 310,311 行。(注文, 日付) の組の数と一致した。
+  - `write_snapshot`: 監査カラムを足して、`<raw_dir>/olist/orders/ingest_date=YYYY-MM-DD/orders_YYYYMMDD.parquet` に書き出す。一時フォルダで試して、603 行 × 11 列(2017-10-04)を確認済み。data/raw/ には、まだ書き出していない。
+- 出力の形と決めたことは、docs/design/orders-data-profile.md と orders-vertical-slice.md を参照。
 - orders のデータは data/olist/ にある。
-- `build_events` の結果を確認済み。出来事の合計は 394,713 件で、rank ごとの件数も想定どおり。手で再現した表とも完全に一致した。出力の形は、docs/design/orders-data-profile.md の「build_events の出力」を参照。
-- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。1セル1処理で、想定の出力を `# 出力:` のコメントに書いてある。
+- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。D 節は build_snapshot の結果を、E 節は build_snapshot の中身を1行ずつ再現している。モジュールを変えたあとは、カーネルの再起動が必要。
 
 ## 次にやること
-1. 日付ごとのスナップショットを作る(日付 D までの出来事のうち、注文ごとに rank が最大のものを選び、D 時点の状態を作る)。
-2. 日付ごとの Parquet に書き出す。
-3. ingest ロールで、raw/ に取り込む。
-4. Athena で Raw を読む外部テーブルを作り、Silver に MERGE する。
+1. ingest ロールで、raw/ に取り込む(最初は 3 日分。data/raw/ に書き出してから、S3 にアップロードする)。
+2. Athena で Raw を読む外部テーブルを作り、Silver に MERGE する。
+3. 同じ日付を再実行しても、Silver が変わらないことを確かめる(縦通しの完了の基準)。
 - そのあと: 権限の整理(OIDC、deployer)、モジュール化、test と prod、Airflow、dbt、ADR。
 
 ## 未解決
