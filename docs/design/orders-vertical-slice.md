@@ -1,7 +1,7 @@
 # orders の縦通し設計(最小スライス)
 
 - 作成日: 2026-10-22
-- 状態: 合意済み(実装中。Parquet への書き出しまで済み)
+- 状態: 合意済み(実装中。Silver のテーブル作成まで済み)
 
 ## 目的
 
@@ -88,3 +88,10 @@ Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver ま�
   - Bronze: 列の一覧の最後に足す(`update in-place`)。古いファイルの値は NULL として読めるので、Raw は書き換えない。
   - Silver: `ALTER TABLE … ADD COLUMNS` で列を足す。Iceberg は、データのファイルを書き直さない。過去の値が必要なら、backfill する。
   - backfill の注意: MERGE は古い `ingest_date` で上書きしないので、古い日付を再実行しても値は入らない。backfill は、Bronze から Silver を作り直す(full refresh)か、専用の更新で行う。
+- **Silver の定義は、SQL ファイルで管理する**: `sql/silver/create_orders.sql`(`CREATE TABLE IF NOT EXISTS`)を、transform ロールで、AWS CLI(`aws athena start-query-execution`)から実行する。Terraform にしない理由は、次の3つ。
+  - Iceberg は、更新(MERGE)のたびに、Glue の `metadata_location` が書き換わる。Terraform で管理すると、設計図とのずれになり、`apply` で古い状態に戻す恐れがある。
+  - 列の追加は `ALTER TABLE … ADD COLUMNS` で行い、テーブルを作り直さない。
+  - silver と gold は、テーブルが増えていく。フェーズ3で dbt に移すので、dbt と同じ SQL の形にしておく。
+  - 役割の分け方: 中身が動かないもの(バケット、データベース、workgroup、IAM、Bronze)は Terraform。Iceberg のテーブルは SQL(のちに dbt)。
+- **Silver の設定**: 場所は `iceberg/silver/orders/`。パーティションは `month(order_purchase_timestamp)`(購入日時は値が変わらないので、更新で行が移動しない)。形式は Parquet、圧縮は zstd。`vacuum_*` と `optimize_*` は既定値のままにし、運用の段階(Airflow)で決める。
+- **アカウント ID の扱い**: SQL ファイルでは、バケット名を `__LAKE_BUCKET__` という目印にし、実行するときに `sed` で置き換える。同時に、`--` のコメント行を取り除く(Athena の DDL は、先頭のコメントでエラーになることがあるため)。
