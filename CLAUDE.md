@@ -1,4 +1,4 @@
-# プロジェクトの引き継ぎメモ(更新: 2026-10-25)
+# プロジェクトの引き継ぎメモ(更新: 2026-10-26)
 
 ## 目的
 データエンジニアのポートフォリオ。EC データ(Olist)を、取り込み → 整形 → 集計 → Streamlit のダッシュボードと AI アナリストまで流す。要件、スコープ、フェーズ計画の詳細は、Claude のドキュメント「データエンジニア ポートフォリオ 引き継ぎドキュメント」を参照する(リポジトリに docs/handoff.md として保存した場合は、そちらを読む)。
@@ -14,24 +14,25 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Terraform は、`plan` の内容を読んで説明してから `apply` する。削除(`-`)や置き換え(`-/+`)が出たら、必ず理由を説明する。
 - 説明は、たとえ(例: 荷物の追跡スタンプ)と、実データの1〜2件の例を使い、かんたんな言葉から始める。ノートブックは1セル1処理にし、想定の出力をコメント(`# 出力:`)に書く。
 - AWS の操作は、実行を CLI かコードで行い(再現性と自動化のため)、結果の確認を GUI(マネジメントコンソール)で行う。コマンドごとに、GUI ではどこが変わるかを説明する。Terraform が管理するものは、GUI で変えない。Athena のクエリエディタでの試し書きは、GUI でよい。
+- シェルの変数を使う手順は、ユーザーがターミナルに直接打つよう案内する(チャットの `!` 入力や Run ボタンは、1回ごとに別のシェルになり、変数が残らないことがある)。
 - 長いエラーや出力は、要点だけを扱う(トークンの節約)。
 - 設計判断は、docs/design と ADR(docs/adr)に残す。
 
 ## セッションの始め方と終わり方
 - 始め方: ユーザーが「続きから」と言ったら、まず `git status -sb` で、未コミットと未 push を確認する。そのうえで、「現在の状態」と「次にやること」を3行で要約し、最初のステップを1つだけ提案して、返事を待つ。承認なしに、ファイルの変更やコマンドの実行をしない。
-- 終わり方: ユーザーが「ここまでにする」と言ったら、「現在の状態」と「次にやること」の更新案を示す。承認されたら CLAUDE.md を更新し、コミットと push の手順を案内する。
+- 終わり方: ユーザーが「ここまでにする」と言ったら、「現在の状態」と「次にやること」の更新案を示す。承認されたら CLAUDE.md を更新し、コミットと push まで行う。
 - 1つのセッションは、1〜3ステップを目安に区切る。区切りで、新しいセッションにする。
 
 ## 禁止事項(Public のリポジトリ)
 - アクセスキー、パスワード、AWS のアカウント ID、トークンを、ファイルに書かない。
 - 元データ(data/ 、*.parquet)とノートブック(notebooks/)は、Git に入れない(.gitignore で除外済み)。
 - Terraform の状態ファイル(*.tfstate)と .terraform/ は、Git に入れない。
-- コミットは `git add <ファイル名>` で、対象を指定する。`git add .` は使わない。
+- コミットは `git add <ファイル名>` で、対象を指定する。`git add .` は使わない。コミットと push は、区切りごとに Claude が行ってよい(git のコマンドの説明は不要)。
 
 ## リポジトリの構成
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf(test と prod は、モジュール化のあとで作る)
-- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、build_events、build_snapshot、write_snapshot)
+- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、build_events、build_snapshot、write_snapshot。run_replay.py は、期間を指定して日付ごとに書き出す実行役)
 - docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md
 - docs/adr: 設計判断の記録(フェーズ1の終わりに書く)
 - notebooks: 確認用のノートブック(Git の管理外)
@@ -50,19 +51,19 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 ## 現在の状態
 - AWS の土台(S3、Glue、Athena、2つの IAM ロール)は、dev に作成済み。コミットと push も済み。
 - Python の環境(uv)は作成済み。
-- ingestion/replay_orders.py に、4つの関数がそろった。ruff(check と format)は通過。コミットと push も済み。
-  - `load_orders` と `build_events`: 出来事の合計は 394,713 件で、確認済み。
-  - `build_snapshot`: 日付 D に出来事があった注文を、D 時点の状態で返す。リプレイの日数は 696 日(2016-09-04 〜 2018-10-18)で、全日の合計は 310,311 行。(注文, 日付) の組の数と一致した。
-  - `write_snapshot`: 監査カラムを足して、`<raw_dir>/olist/orders/ingest_date=YYYY-MM-DD/orders_YYYYMMDD.parquet` に書き出す。一時フォルダで試して、603 行 × 11 列(2017-10-04)を確認済み。data/raw/ には、まだ書き出していない。
+- ingestion/replay_orders.py に、4つの関数がそろった(load_orders、build_events、build_snapshot、write_snapshot)。出来事の合計は 394,713 件、リプレイは 696 日で全日の合計 310,311 行。
+- ingestion/run_replay.py を作成した(`uv run python -m ingestion.run_replay --start YYYY-MM-DD --end YYYY-MM-DD`)。batch_id は、実行時刻の UTC(例: 20261025T065417Z)。コミットと push も済み。
+- 2017-10-04〜06 の3日分を data/raw/ に書き出し(603 / 476 / 511 行、11 列)、ingest ロールで S3 の raw/olist/orders/ingest_date=…/ にアップロードした(aws s3 sync)。CLI とコンソールで、3ファイルを確認済み。
+- ingest ロールで iceberg/ に入れないことの確認は、スキップした。
 - 出力の形と決めたことは、docs/design/orders-data-profile.md と orders-vertical-slice.md を参照。
 - orders のデータは data/olist/ にある。
-- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。D 節は build_snapshot の結果を、E 節は build_snapshot の中身を1行ずつ再現している。モジュールを変えたあとは、カーネルの再起動が必要。
+- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。D 節は build_snapshot の結果、E 節は build_snapshot の中身、F 節は run_replay.py の中身(argparse とループ)を再現している(F 節はセル案を出した。ユーザーが足したかは未確認)。モジュールを変えたあとは、カーネルの再起動が必要。
 
 ## 次にやること
-1. ingest ロールで、raw/ に取り込む(最初は 3 日分。data/raw/ に書き出してから、S3 にアップロードする)。
-2. Athena で Raw を読む外部テーブルを作り、Silver に MERGE する。
+1. Athena で、Raw を読む外部テーブルを作る(ecom_dev_bronze。ingest_date をパーティションの列にする)。クエリの試し書きはクエリエディタで行い、決まった定義はリポジトリに残す。
+2. Silver(ecom_dev_silver.orders、Iceberg)を作り、Raw から MERGE する。
 3. 同じ日付を再実行しても、Silver が変わらないことを確かめる(縦通しの完了の基準)。
-- そのあと: 権限の整理(OIDC、deployer)、モジュール化、test と prod、Airflow、dbt、ADR。
+- そのあと: 権限の整理(OIDC、deployer。ingest ロールで iceberg/ に入れないことの確認も、ここで行う)、モジュール化、test と prod、Airflow、dbt、ADR。
 
 ## 未解決
 - Olist のライセンス条件の確認(公開前までに)。
