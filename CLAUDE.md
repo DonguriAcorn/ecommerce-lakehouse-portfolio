@@ -15,6 +15,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 説明は、たとえ(例: 荷物の追跡スタンプ)と、実データの1〜2件の例を使い、かんたんな言葉から始める。ノートブックは1セル1処理にし、想定の出力をコメント(`# 出力:`)に書く。
 - AWS の操作は、実行を CLI かコードで行い(再現性と自動化のため)、結果の確認を GUI(マネジメントコンソール)で行う。コマンドごとに、GUI ではどこが変わるかを説明する。Terraform が管理するものは、GUI で変えない。Athena のクエリエディタでの試し書きは、GUI でよい。
 - シェルの変数を使う手順は、ユーザーがターミナルに直接打つよう案内する(チャットの `!` 入力や Run ボタンは、1回ごとに別のシェルになり、変数が残らないことがある)。
+- シェルの変数を使う手順は、`&&` で1行にまとめて示す(チャットの `!` 入力でも、同じシェルで動くように)。受付番号などは、変数に入れず表示させる。
 - 長いエラーや出力は、要点だけを扱う(トークンの節約)。
 - 設計判断は、docs/design と ADR(docs/adr)に残す。
 
@@ -59,17 +60,20 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
   - 3日分の件数と、例の注文(e481f51c…、10-04 は shipped)が読めることを確認済み。コミットと push も済み。
 - Bronze を外部テーブルにした理由と、列が増えたときの手順は、docs/design/orders-vertical-slice.md の「決めたこと(2026-10-26)」を参照。
 - ingest ロールで iceberg/ に入れないことの確認は、スキップした。
+- Silver(ecom_dev_silver.orders、Iceberg)を、sql/silver/create_orders.sql で作成した(transform ロール、AWS CLI から Athena で実行)。
+  - 定義は Terraform ではなく SQL で管理する(のちに dbt)。理由と設定値は、設計書の「決めたこと(2026-10-26)」を参照。
+  - MERGE の判定用に `_ingest_date`(date)を、ALTER TABLE で追加した。create_orders.sql にも反映済み。
+- sql/silver/merge_orders.sql で、10-04〜06 を MERGE した。Silver は 1,308 行で、Bronze の3日分の order_id の種類の数と一致した。コミットと push も済み。
+- 再実行の MERGE は、実行済み(10-04 だけを1回、10-04〜06 を3回、すべて SUCCEEDED)。ただし、結果の比較はまだ。
+- order_estimated_delivery_date が _ingest_date より後なのは、仕様どおり(購入時に決まる予定日。リプレイで空にするのは、承認、引き渡し、配達の3列だけ)。
 - orders のデータは data/olist/ にある。
 - 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。モジュールを変えたあとは、カーネルの再起動が必要。
 
 ## 次にやること
-1. Silver(ecom_dev_silver.orders、Iceberg)を作る。
-   - Iceberg の設定(table_type、location、months() のパーティション、format と圧縮、テーブルプロパティ)は、項目ごとに「何をするか」と「なぜその値か」を細かく説明する(ユーザーの要望)。
-   - 定義をどこで管理するか(Athena の SQL を残すか、Terraform か)は、このときに決める。
-2. Bronze から Silver に MERGE する。
-   - order_id ごとに ingest_date が最新の行だけを使う。
-   - 古い情報で、新しい情報を上書きしない条件を入れる。
-3. 同じ日付を再実行しても、Silver が変わらないことを確かめる(縦通しの完了の基準)。スナップショットの比較も使う。
+1. 再実行の確認の比較を行う(クエリは sql/silver/check_orders_rerun.sql)。基準は、最初のスナップショット(committed_at が 2026-10-26 08:08 UTC)。
+   - 差分(EXCEPT の両方向)が 0、件数が 1308 | 1308、protected_orders が1以上、leaked_rows が 0。
+   - スナップショットの数も記録する。
+2. 結果を設計書に記録して、縦通しを完了にする。
 - そのあと: 権限の整理(OIDC、deployer。ingest ロールで iceberg/ に入れないことの確認も、ここで行う)、モジュール化、test と prod、Airflow、dbt、ADR。
 - ADR の候補(フェーズ1の終わり): Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化。
 
