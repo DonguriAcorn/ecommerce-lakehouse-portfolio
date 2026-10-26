@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS ecom_dev_silver.orders (
   order_delivered_customer_date timestamp,
   order_estimated_delivery_date timestamp,
   _ingested_at                  timestamp,
-  _batch_id                     string
+  _batch_id                     string,
+  _ingest_date                  date
 )
 PARTITIONED BY (month(order_purchase_timestamp))
 LOCATION 's3://__LAKE_BUCKET__/iceberg/silver/orders/'

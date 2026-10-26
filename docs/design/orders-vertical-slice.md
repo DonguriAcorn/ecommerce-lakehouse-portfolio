@@ -50,7 +50,7 @@ Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver ま�
 |---|---|
 | 名前 | `ecom_dev_silver.orders`(Iceberg) |
 | 主キー | `order_id` |
-| 列 | 上の8列 + `_ingested_at`、`_batch_id` |
+| 列 | 上の8列 + `_ingested_at`、`_batch_id`、`_ingest_date` |
 | パーティション | 購入月(`order_purchase_timestamp` の月) |
 | 更新の方法 | `MERGE`(同じ `order_id` なら更新、なければ追加) |
 
@@ -95,3 +95,5 @@ Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver ま�
   - 役割の分け方: 中身が動かないもの(バケット、データベース、workgroup、IAM、Bronze)は Terraform。Iceberg のテーブルは SQL(のちに dbt)。
 - **Silver の設定**: 場所は `iceberg/silver/orders/`。パーティションは `month(order_purchase_timestamp)`(購入日時は値が変わらないので、更新で行が移動しない)。形式は Parquet、圧縮は zstd。`vacuum_*` と `optimize_*` は既定値のままにし、運用の段階(Airflow)で決める。
 - **アカウント ID の扱い**: SQL ファイルでは、バケット名を `__LAKE_BUCKET__` という目印にし、実行するときに `sed` で置き換える。同時に、`--` のコメント行を取り除く(Athena の DDL は、先頭のコメントでエラーになることがあるため)。
+- **Silver に `_ingest_date`(date)を持つ**: MERGE で「古い情報で上書きしない」を判定するための、リプレイ上の日付。`_ingested_at` は書き出した時刻なので、古い日付を書き出し直すと新しく見えてしまい、判定に使えない。dev では `ALTER TABLE … ADD COLUMNS` で足し、`create_orders.sql` にも同じ列を最後に足した。
+- **MERGE の条件**: `sql/silver/merge_orders.sql`。材料は、指定した `ingest_date` の範囲から、`row_number()` で注文ごとに最新の1行だけにする。更新は `s._ingest_date > t._ingest_date` のときだけ(`>=` にしない)。同じ日付の再実行では何も変わらない。同じ日付の訂正版を反映するときは、full refresh で行う。材料にない Silver の行は消さない(毎日の材料は、出来事のあった注文だけのため)。
