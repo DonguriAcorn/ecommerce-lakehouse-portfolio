@@ -68,7 +68,6 @@ Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver ま�
 
 - 遅延到着(日付が前後する)のデータの扱い
 - Airflow での自動化(縦に通したあとの、次の段階で行う)
-- Bronze の Glue テーブル定義(Raw を読むための外部テーブルは、実装のステップで作る)
 
 ## 決めたこと(2026-10-25)
 
@@ -76,3 +75,16 @@ Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver ま�
 - **`_batch_id` は、関数の外で決める**: 手で実行するときは、run_replay.py が実行時刻の UTC(例: `20261025T065417Z`)を使う。Airflow を使うようになったら、Airflow の実行 ID を渡す。
 - **`_ingested_at` は、書き出した時刻にする**: ファイルの中の値は、書き出すときにしか決められない。S3 に置いた時刻が必要なときは、S3 側の更新時刻を見る。
 - **タイムゾーンの印を付けない理由**: Athena の `timestamp` 型(タイムゾーンなし)に合わせる。値は UTC にそろえる。
+
+## 決めたこと(2026-10-26)
+
+- **Bronze は外部テーブルにする**: `ecom_dev_bronze.orders` は、Raw の Parquet をそのまま読む外部テーブル。Iceberg にしない理由は、次の3つ。
+  - Raw のファイルは Python が置くだけで、Iceberg のメタデータを更新しない。
+  - Bronze は追加だけで、MERGE や DELETE を使わない。
+  - Iceberg にすると、Raw と同じデータを2回持つことになる。
+- **パーティションは射影で扱う**: `ingest_date`(string、`yyyy-MM-dd`)を、範囲 2016-09-01〜2018-12-31 の1日刻みで射影する。日付が増えても、パーティションの登録(`MSCK REPAIR TABLE`)はいらない。
+- **定義は Terraform で管理する**: `terraform/envs/dev/bronze.tf`(`aws_glue_catalog_table`)。バケット名は参照で入るので、アカウント ID をファイルに書かない。コンソールでは変更しない。
+- **列が増えたとき(将来の手順)**:
+  - Bronze: 列の一覧の最後に足す(`update in-place`)。古いファイルの値は NULL として読めるので、Raw は書き換えない。
+  - Silver: `ALTER TABLE … ADD COLUMNS` で列を足す。Iceberg は、データのファイルを書き直さない。過去の値が必要なら、backfill する。
+  - backfill の注意: MERGE は古い `ingest_date` で上書きしないので、古い日付を再実行しても値は入らない。backfill は、Bronze から Silver を作り直す(full refresh)か、専用の更新で行う。
