@@ -31,7 +31,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 
 ## リポジトリの構成
 - terraform/bootstrap: 状態ファイル用の S3 バケット
-- terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf(test と prod は、モジュール化のあとで作る)
+- terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
 - ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、build_events、build_snapshot、write_snapshot。run_replay.py は、期間を指定して日付ごとに書き出す実行役)
 - docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md
 - docs/adr: 設計判断の記録(フェーズ1の終わりに書く)
@@ -52,18 +52,26 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - AWS の土台(S3、Glue、Athena、2つの IAM ロール)は、dev に作成済み。コミットと push も済み。
 - Python の環境(uv)は作成済み。
 - ingestion/replay_orders.py に、4つの関数がそろった(load_orders、build_events、build_snapshot、write_snapshot)。出来事の合計は 394,713 件、リプレイは 696 日で全日の合計 310,311 行。
-- ingestion/run_replay.py を作成した(`uv run python -m ingestion.run_replay --start YYYY-MM-DD --end YYYY-MM-DD`)。batch_id は、実行時刻の UTC(例: 20261025T065417Z)。コミットと push も済み。
-- 2017-10-04〜06 の3日分を data/raw/ に書き出し(603 / 476 / 511 行、11 列)、ingest ロールで S3 の raw/olist/orders/ingest_date=…/ にアップロードした(aws s3 sync)。CLI とコンソールで、3ファイルを確認済み。
+- ingestion/run_replay.py で、2017-10-04〜06 の3日分(603 / 476 / 511 行、11 列)を書き出し、S3 の raw/olist/orders/ingest_date=…/ にアップロード済み。
+- Bronze の外部テーブル ecom_dev_bronze.orders を、Terraform(terraform/envs/dev/bronze.tf、aws_glue_catalog_table)で作成した。
+  - ingest_date(string)を、パーティション射影で扱う(2016-09-01〜2018-12-31、1日刻み)。
+  - クエリエディタで試したテーブルは DROP し、Terraform で作り直した。
+  - 3日分の件数と、例の注文(e481f51c…、10-04 は shipped)が読めることを確認済み。コミットと push も済み。
+- Bronze を外部テーブルにした理由と、列が増えたときの手順は、docs/design/orders-vertical-slice.md の「決めたこと(2026-10-26)」を参照。
 - ingest ロールで iceberg/ に入れないことの確認は、スキップした。
-- 出力の形と決めたことは、docs/design/orders-data-profile.md と orders-vertical-slice.md を参照。
 - orders のデータは data/olist/ にある。
-- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。D 節は build_snapshot の結果、E 節は build_snapshot の中身、F 節は run_replay.py の中身(argparse とループ)を再現している(F 節はセル案を出した。ユーザーが足したかは未確認)。モジュールを変えたあとは、カーネルの再起動が必要。
+- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。モジュールを変えたあとは、カーネルの再起動が必要。
 
 ## 次にやること
-1. Athena で、Raw を読む外部テーブルを作る(ecom_dev_bronze。ingest_date をパーティションの列にする)。クエリの試し書きはクエリエディタで行い、決まった定義はリポジトリに残す。
-2. Silver(ecom_dev_silver.orders、Iceberg)を作り、Raw から MERGE する。
-3. 同じ日付を再実行しても、Silver が変わらないことを確かめる(縦通しの完了の基準)。
+1. Silver(ecom_dev_silver.orders、Iceberg)を作る。
+   - Iceberg の設定(table_type、location、months() のパーティション、format と圧縮、テーブルプロパティ)は、項目ごとに「何をするか」と「なぜその値か」を細かく説明する(ユーザーの要望)。
+   - 定義をどこで管理するか(Athena の SQL を残すか、Terraform か)は、このときに決める。
+2. Bronze から Silver に MERGE する。
+   - order_id ごとに ingest_date が最新の行だけを使う。
+   - 古い情報で、新しい情報を上書きしない条件を入れる。
+3. 同じ日付を再実行しても、Silver が変わらないことを確かめる(縦通しの完了の基準)。スナップショットの比較も使う。
 - そのあと: 権限の整理(OIDC、deployer。ingest ロールで iceberg/ に入れないことの確認も、ここで行う)、モジュール化、test と prod、Airflow、dbt、ADR。
+- ADR の候補(フェーズ1の終わり): Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化。
 
 ## 未解決
 - Olist のライセンス条件の確認(公開前までに)。
