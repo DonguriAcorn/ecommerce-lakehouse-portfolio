@@ -16,6 +16,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - AWS の操作は、実行を CLI かコードで行い(再現性と自動化のため)、結果の確認を GUI(マネジメントコンソール)で行う。コマンドごとに、GUI ではどこが変わるかを説明する。Terraform が管理するものは、GUI で変えない。Athena のクエリエディタでの試し書きは、GUI でよい。
 - シェルの変数を使う手順は、ユーザーがターミナルに直接打つよう案内する(チャットの `!` 入力や Run ボタンは、1回ごとに別のシェルになり、変数が残らないことがある)。
 - シェルの変数を使う手順は、`&&` で1行にまとめて示す(チャットの `!` 入力でも、同じシェルで動くように)。受付番号などは、変数に入れず表示させる。
+- チャットの `!` 入力では、長い1行のコマンドが崩れて実行されないことがある。長いコマンドは、ターミナルに直接打ってもらうか、読むだけの操作なら Claude が実行する。
 - 長いエラーや出力は、要点だけを扱う(トークンの節約)。
 - 設計判断は、docs/design と ADR(docs/adr)に残す。
 
@@ -65,6 +66,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
   - MERGE の判定用に `_ingest_date`(date)を、ALTER TABLE で追加した。create_orders.sql にも反映済み。
 - sql/silver/merge_orders.sql で、10-04〜06 を MERGE した。Silver は 1,308 行で、Bronze の3日分の order_id の種類の数と一致した。コミットと push も済み。
 - 再実行の確認が終わり、**orders の縦通しは完了**した。スナップショットは1つ(再実行では変わる行がなく、Athena はスナップショットを作らない)。差分は 0、件数は 1308 / 1308、protected_orders は 175、leaked_rows は 0。結果は設計書の「検証の結果(2026-10-27)」に記録した。
+- Silver の中身(Iceberg)を確認した。台帳(metadata.json)が3つ(CREATE、ALTER、MERGE)、.avro が2つ、データのファイルが3つ(購入月の 2017-08 / 09 / 10 で、7 / 527 / 774 行)。スナップショットの operation は overwrite だった。
 - order_estimated_delivery_date が _ingest_date より後なのは、仕様どおり(購入時に決まる予定日。リプレイで空にするのは、承認、引き渡し、配達の3列だけ)。
 - orders のデータは data/olist/ にある。
 - 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。モジュールを変えたあとは、カーネルの再起動が必要。
