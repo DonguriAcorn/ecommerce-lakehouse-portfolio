@@ -1,4 +1,4 @@
-# プロジェクトの引き継ぎメモ(更新: 2026-10-26)
+# プロジェクトの引き継ぎメモ(更新: 2026-10-27)
 
 ## 目的
 データエンジニアのポートフォリオ。EC データ(Olist)を、取り込み → 整形 → 集計 → Streamlit のダッシュボードと AI アナリストまで流す。要件、スコープ、フェーズ計画の詳細は、Claude のドキュメント「データエンジニア ポートフォリオ 引き継ぎドキュメント」を参照する(リポジトリに docs/handoff.md として保存した場合は、そちらを読む)。
@@ -64,18 +64,20 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
   - 定義は Terraform ではなく SQL で管理する(のちに dbt)。理由と設定値は、設計書の「決めたこと(2026-10-26)」を参照。
   - MERGE の判定用に `_ingest_date`(date)を、ALTER TABLE で追加した。create_orders.sql にも反映済み。
 - sql/silver/merge_orders.sql で、10-04〜06 を MERGE した。Silver は 1,308 行で、Bronze の3日分の order_id の種類の数と一致した。コミットと push も済み。
-- 再実行の MERGE は、実行済み(10-04 だけを1回、10-04〜06 を3回、すべて SUCCEEDED)。ただし、結果の比較はまだ。
+- 再実行の確認が終わり、**orders の縦通しは完了**した。スナップショットは1つ(再実行では変わる行がなく、Athena はスナップショットを作らない)。差分は 0、件数は 1308 / 1308、protected_orders は 175、leaked_rows は 0。結果は設計書の「検証の結果(2026-10-27)」に記録した。
 - order_estimated_delivery_date が _ingest_date より後なのは、仕様どおり(購入時に決まる予定日。リプレイで空にするのは、承認、引き渡し、配達の3列だけ)。
 - orders のデータは data/olist/ にある。
 - 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。モジュールを変えたあとは、カーネルの再起動が必要。
 
 ## 次にやること
-1. 再実行の確認の比較を行う(クエリは sql/silver/check_orders_rerun.sql)。基準は、最初のスナップショット(committed_at が 2026-10-26 08:08 UTC)。
-   - 差分(EXCEPT の両方向)が 0、件数が 1308 | 1308、protected_orders が1以上、leaked_rows が 0。
-   - スナップショットの数も記録する。
-2. 結果を設計書に記録して、縦通しを完了にする。
-- そのあと: 権限の整理(OIDC、deployer。ingest ロールで iceberg/ に入れないことの確認も、ここで行う)、モジュール化、test と prod、Airflow、dbt、ADR。
-- ADR の候補(フェーズ1の終わり): Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化。
+1. エラーの設計: ログを S3 に残し、原因をメッセージに書き出す。
+   - メッセージの形は `[処理_段階] 何が / どの列で / 何件 (例: …)`。例: `[ORDERS_VALIDATE] order_status に想定外の値があります: 3件`。
+   - 置き場所は S3 の logs/(JSON Lines。実行ごとに `run_date=` と `run_id=` で分ける)。不良な行は quarantine/ に隔離する。
+   - 最初の対象は Python の取り込み(run_replay.py)。Athena の MERGE の失敗(QueryExecutionId と理由)は、そのあとに入れる。
+   - ingest ロールに logs/ と quarantine/ への書き込みを、Terraform で足す。
+   - まず設計書(docs/design)に方針を書いてから、コードに入る。
+2. そのあと: 権限の整理(OIDC、deployer。ingest ロールで iceberg/ に入れないことの確認も、ここで行う)、モジュール化、test と prod、Airflow、dbt、ADR。
+- ADR の候補(フェーズ1の終わり): Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由。
 
 ## 未解決
 - Olist のライセンス条件の確認(公開前までに)。
