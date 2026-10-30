@@ -31,9 +31,7 @@
 - [x] 権限設計表([permissions.md](design/permissions.md))
 - [ ] エラーの設計 ← 今ここ
   - [ ] error-handling.md に方針を書く
-    - メッセージの形: `[処理_段階] 何が / どの列で / 何件 (例: …)`。例: `[ORDERS_VALIDATE] order_status に想定外の値があります: 3件`
-    - logs/ に JSON Lines で残す。実行ごとに `run_date=` と `run_id=` で分ける
-    - 不良な行は quarantine/ に隔離する。保存期間も決める
+    - 済み([error-handling.md](design/error-handling.md))。ログは `run_date=` と `batch_id=` で分ける。保存期間は logs/ が 90日、quarantine/ が 30日
   - [ ] permissions.md に logs/ と quarantine/ の列を足し、状態を「ingest / transform は実装済み」に直す
   - [ ] ingest ロールに logs/ と quarantine/ への書き込みを足す(Terraform)
   - [ ] run_replay.py に、ログと隔離を入れる(Python の取り込みだけ。dbt の失敗は「Airflow の運用」で扱う)
