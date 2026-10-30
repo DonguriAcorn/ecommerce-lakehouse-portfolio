@@ -40,7 +40,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、build_events、build_snapshot、write_snapshot。run_replay.py は、期間を指定して日付ごとに書き出す実行役)
 - sql/silver: Silver の SQL(create_orders.sql、merge_orders.sql、check_orders_rerun.sql。フェーズ2で dbt に移す)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
-- docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md
+- docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md
 - docs/adr: 設計判断の記録(フェーズ1の終わりに書く)
 - notebooks: 確認用のノートブック(Git の管理外)
 - dbt、airflow、app、semantic、tests: これから使う
@@ -58,8 +58,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 
 ## 現在の状態
-- 途中経過: orders の縦通しが完了し、docs/tasks.md を作った。エラーの設計は、まだ始めていない。
-- 次の1手: docs/design/error-handling.md に、エラーの設計の方針を書く。
+- 途中経過: エラーの設計の方針(error-handling.md)を書き、permissions.md に logs/ と quarantine/ を足した。Terraform と run_replay.py の実装は、まだ。
+- 次の1手: iam.tf で、ingest ロールに logs/ と quarantine/ の書き込み(PutObject)と一覧(ListBucket)の権限を足し、plan を読んでから apply する。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。

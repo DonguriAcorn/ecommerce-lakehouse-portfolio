@@ -30,9 +30,9 @@
 - [x] orders の縦通し(1テーブル、3日分): リプレイ → Raw → Bronze → Silver の MERGE → 再実行の検証
 - [x] 権限設計表([permissions.md](design/permissions.md))
 - [ ] エラーの設計 ← 今ここ
-  - [ ] error-handling.md に方針を書く
+  - [x] error-handling.md に方針を書く
     - 済み([error-handling.md](design/error-handling.md))。ログは `run_date=` と `batch_id=` で分ける。保存期間は logs/ が 90日、quarantine/ が 30日
-  - [ ] permissions.md に logs/ と quarantine/ の列を足し、状態を「ingest / transform は実装済み」に直す
+  - [x] permissions.md に logs/ と quarantine/ の列を足し、状態を「ingest / transform は実装済み」に直す
   - [ ] ingest ロールに logs/ と quarantine/ への書き込みを足す(Terraform)
   - [ ] run_replay.py に、ログと隔離を入れる(Python の取り込みだけ。dbt の失敗は「Airflow の運用」で扱う)
   - [ ] ingest ロールで iceberg/ に入れないことを確かめる
