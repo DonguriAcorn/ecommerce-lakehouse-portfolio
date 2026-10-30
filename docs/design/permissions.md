@@ -1,7 +1,7 @@
 # 権限設計表
 
 - 作成日: 2026-10-22
-- 状態: 合意済み(実装前)
+- 状態: ingest と transform は実装済み(terraform/envs/dev/iam.tf)。reader と deployer は実装前
 
 ## 方針
 
@@ -20,14 +20,14 @@
 
 ## S3 の権限
 
-凡例: 読 = 読み取り、書 = 書き込みと削除、— = 権限なし。
+凡例: 読 = 読み取り、書 = 書き込みと削除、置 = 書き込みだけ(読み取りと削除はしない)、— = 権限なし。
 
-| ロール | `raw/` | `iceberg/` | `athena-results/` |
-|---|---|---|---|
-| ingest | 読・書 | — | — |
-| transform | 読 | 読・書 | 読・書 |
-| reader | — | gold だけ読 | 読・書 |
-| deployer | バケット自体の設定の管理(中のデータは読み書きしない) | 同左 | 同左 |
+| ロール | `raw/` | `iceberg/` | `athena-results/` | `logs/` | `quarantine/` |
+|---|---|---|---|---|---|
+| ingest | 読・書 | — | — | 置 | 置 |
+| transform | 読 | 読・書 | 読・書 | —(フェーズ2で置を足す) | — |
+| reader | — | gold だけ読 | 読・書 | — | — |
+| deployer | バケット自体の設定の管理(中のデータは読み書きしない) | 同左 | 同左 | 同左 | 同左 |
 
 deployer は、状態ファイル用のバケットだけ、読み書きできる。
 
@@ -45,6 +45,8 @@ deployer は、状態ファイル用のバケットだけ、読み書きでき�
 - `primary` の workgroup は使わせない。Athena の権限は、環境ごとの workgroup だけに限定する。
 - Athena は、実行した人(ロール)の権限で S3 を読み書きする。そのため、transform と reader には、Athena の権限に加えて、S3 の権限も必要である。
 - IAM を操作する権限は、deployer だけに限定し、対象を `ecom-` で始まる名前のロールに絞る。
+- logs/ と quarantine/ は「置」にする。記録は、あとから書き換えたり消したりできないほうが、調査の証拠として信用できる。消すのは、S3 のライフサイクル(logs/ は 90日、quarantine/ は 30日)に任せる([error-handling.md](error-handling.md))。
+- アップロードは `aws s3 sync` で行う。sync は、送る先にすでにあるファイルの一覧を見るので、ingest には logs/ と quarantine/ の一覧の権限(`s3:ListBucket`)も要る。`--delete` は使わない(削除の権限がないため)。
 
 ## 実装の順番
 
