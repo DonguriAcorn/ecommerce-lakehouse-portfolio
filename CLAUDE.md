@@ -64,8 +64,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 
 ## 現在の状態
-- 途中経過: エラーの設計の方針(error-handling.md)を書き、permissions.md に logs/ と quarantine/ を足した。Terraform と run_replay.py の実装は、まだ。
-- 次の1手: iam.tf で、ingest ロールに logs/ と quarantine/ の書き込み(PutObject)と一覧(ListBucket)の権限を足し、plan を読んでから apply する。
+- 途中経過: エラーの設計の方針(error-handling.md)を書き、permissions.md に logs/ と quarantine/ を足した。iam.tf で ingest ロールに logs/ と quarantine/ への PutObject と一覧の権限を足し、dev に apply 済み(再 plan は No changes)。run_replay.py の実装は、まだ。
+- 次の1手: run_replay.py に、ログ(logs/)と隔離(quarantine/)を入れる。最初に、error-handling.md の方針を読み直し、書く内容を決める。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。

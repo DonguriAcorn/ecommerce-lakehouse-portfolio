@@ -33,7 +33,8 @@
   - [x] error-handling.md に方針を書く
     - 済み([error-handling.md](design/error-handling.md))。ログは `run_date=` と `batch_id=` で分ける。保存期間は logs/ が 90日、quarantine/ が 30日
   - [x] permissions.md に logs/ と quarantine/ の列を足し、状態を「ingest / transform は実装済み」に直す
-  - [ ] ingest ロールに logs/ と quarantine/ への書き込みを足す(Terraform)
+  - [x] ingest ロールに logs/ と quarantine/ への書き込みを足す(Terraform)
+    - 済み(iam.tf)。ListBucket の prefix に 2つ、PutObject だけのステートメントを1つ足した。plan は 0 add / 1 change / 0 destroy
   - [ ] run_replay.py に、ログと隔離を入れる(Python の取り込みだけ。dbt の失敗は「Airflow の運用」で扱う)
   - [ ] ingest ロールで iceberg/ に入れないことを確かめる
 - [ ] アカウント共通のリソースの置き場所を決める〔追加〕

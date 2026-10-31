@@ -33,7 +33,7 @@ data "aws_iam_policy_document" "ingest" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["raw/*"]
+      values   = ["raw/*", "logs/*", "quarantine/*"]
     }
   }
 
@@ -48,6 +48,16 @@ data "aws_iam_policy_document" "ingest" {
       "s3:ListMultipartUploadParts",
     ]
     resources = ["${aws_s3_bucket.lake.arn}/raw/*"]
+  }
+
+  statement {
+    sid     = "PutLogsAndQuarantineObjects"
+    effect  = "Allow"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${aws_s3_bucket.lake.arn}/logs/*",
+      "${aws_s3_bucket.lake.arn}/quarantine/*",
+    ]
   }
 }
 
