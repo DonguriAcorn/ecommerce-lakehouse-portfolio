@@ -64,8 +64,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 
 ## 現在の状態
-- 途中経過: エラーの設計は、run_replay.py への組み込みまで済み(ログ、検証、隔離、停止は終了コード 1。実データは隔離0件、CSV なしの停止も確認)。残りは、ingest ロールで iceberg/ に入れないことの確認。
-- 次の1手: ingest ロールで iceberg/ に書けないことを、CLI で確かめる。分担の案は、確認のコマンドの案を Claude が示し、実行はユーザー。最初に、この分担でよいかを AskUserQuestion で聞く。
+- 途中経過: エラーの設計は全部済み(run_replay.py にログ・検証・隔離を組み込み、ingest ロールが iceberg/ に書けないことも確認)。
+- 次の1手: アカウント共通のリソースの置き場所を決める(状態ファイルのキー案は global/terraform.tfstate)。最初に、分担を AskUserQuestion で聞く。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。
