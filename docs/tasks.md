@@ -29,7 +29,7 @@
 - [x] S3(パブリックアクセスのブロック、暗号化、TLS の強制)、Glue の DB 3つ、Athena の workgroup(1 GiB 上限)、ingest / transform ロール
 - [x] orders の縦通し(1テーブル、3日分): リプレイ → Raw → Bronze → Silver の MERGE → 再実行の検証
 - [x] 権限設計表([permissions.md](design/permissions.md))
-- [ ] エラーの設計
+- [x] エラーの設計
   - [x] error-handling.md に方針を書く
     - 済み([error-handling.md](design/error-handling.md))。ログは `run_date=` と `batch_id=` で分ける。保存期間は logs/ が 90日、quarantine/ が 30日
   - [x] permissions.md に logs/ と quarantine/ の列を足し、状態を「ingest / transform は実装済み」に直す
@@ -40,8 +40,9 @@
     - [x] 検証: ingestion/validate_orders.py(停止と隔離の判定。実データは隔離0件で確認)
     - [x] run_replay.py に組み込む(実行の始めと終わりのログ、隔離の Parquet を quarantine/ の形で書く、停止は終了コード 1)
       - 済み。実データは隔離0件。停止(CSV なし)は終了コード 1 で確認。隔離ありの動きは、フェーズ2の pytest で確かめる
-  - [ ] ingest ロールで iceberg/ に入れないことを確かめる ← 今ここ
-- [ ] アカウント共通のリソースの置き場所を決める〔追加〕
+  - [x] ingest ロールで iceberg/ に入れないことを確かめる
+    - 済み。raw/ の一覧は成功、iceberg/ への書き込みは AccessDenied(2026-11-01)
+- [ ] アカウント共通のリソースの置き場所を決める〔追加〕 ← 今ここ
   - 状態ファイルのキー(案: global/terraform.tfstate)。apply は portfolio-admin(permissions.md に行を足す)。bootstrap には入れない(bootstrap の状態はローカルだけにあるため)
 - [ ] 月額の上限を決め、AWS Budgets を共通の置き場所に作る〔必須〕
   - 通知先のメールは変数で渡す。.gitignore に `*.tfvars` を足す(`*.tfvars.example` は除く)
