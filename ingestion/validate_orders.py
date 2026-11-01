@@ -163,3 +163,30 @@ def validate_orders(
 
     # 良い行(隔離に当たらなかった行)と、隔離する行を返す
     return raw[~any_hit].copy(), bad
+
+
+def write_quarantine(
+    bad: pd.DataFrame, quarantine_dir: Path, batch_id: str
+) -> Path | None:
+    """隔離する行を Parquet に書く。0件なら、ファイルを作らない。"""
+    if bad.empty:
+        return None
+
+    run_date = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
+    out_path = (
+        quarantine_dir
+        / "olist"
+        / "orders"
+        / f"run_date={run_date}"
+        / f"batch_id={batch_id}"
+        / "orders.parquet"
+    )
+
+    table = bad.assign(
+        _batch_id=batch_id,
+        _quarantined_at=pd.Timestamp.now(tz="UTC").tz_localize(None),
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    table.to_parquet(out_path, index=False)
+    return out_path

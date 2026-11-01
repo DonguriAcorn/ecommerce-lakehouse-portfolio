@@ -77,6 +77,8 @@
 
 | stage | code | level | 対応 |
 |---|---|---|---|
+| ORDERS_RUN | RUN_START | INFO | 実行の始め |
+| ORDERS_RUN | RUN_END | INFO | 実行の終わり(結果、読んだ行数、隔離行数、書き出した日数と行数) |
 | ORDERS_LOAD | SOURCE_NOT_FOUND | ERROR | 停止 |
 | ORDERS_LOAD | MISSING_COLUMN | ERROR | 停止 |
 | ORDERS_VALIDATE | EMPTY_REQUIRED | WARNING | 隔離(order_id か order_purchase_timestamp が空) |
