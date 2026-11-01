@@ -42,6 +42,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 
 ## リポジトリの構成
 - terraform/bootstrap: 状態ファイル用の S3 バケット
+- terraform/global: アカウント共通のリソース(Budgets、OIDC など。いまは空。状態は S3 の global/terraform.tfstate)
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
 - ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、convert_timestamps、build_events、build_snapshot、write_snapshot。run_log.py に RunLog(JSON Lines のログ)。validate_orders.py に read_orders_csv、validate_orders、write_quarantine、IngestStop(停止と隔離の判定、隔離の書き出し)。run_replay.py は、期間を指定して、検証・ログ・隔離を呼びながら日付ごとに書き出す実行役)
 - sql/silver: Silver の SQL(create_orders.sql、merge_orders.sql、check_orders_rerun.sql。フェーズ2で dbt に移す)
@@ -64,8 +65,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 
 ## 現在の状態
-- 途中経過: エラーの設計は全部済み(run_replay.py にログ・検証・隔離を組み込み、ingest ロールが iceberg/ に書けないことも確認)。
-- 次の1手: アカウント共通のリソースの置き場所を決める(状態ファイルのキー案は global/terraform.tfstate)。最初に、分担を AskUserQuestion で聞く。
+- 途中経過: エラーの設計は全部済み。アカウント共通のリソースの置き場所も済み(terraform/global の空の部屋ができ、init と plan は No changes)。
+- 次の1手: 月額の上限を決め、AWS Budgets を terraform/global に作る。最初に、上限額の相談と、分担を AskUserQuestion で聞く。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。

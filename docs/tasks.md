@@ -42,9 +42,10 @@
       - 済み。実データは隔離0件。停止(CSV なし)は終了コード 1 で確認。隔離ありの動きは、フェーズ2の pytest で確かめる
   - [x] ingest ロールで iceberg/ に入れないことを確かめる
     - 済み。raw/ の一覧は成功、iceberg/ への書き込みは AccessDenied(2026-11-01)
-- [ ] アカウント共通のリソースの置き場所を決める〔追加〕 ← 今ここ
+- [x] アカウント共通のリソースの置き場所を決める〔追加〕
   - 状態ファイルのキー(案: global/terraform.tfstate)。apply は portfolio-admin(permissions.md に行を足す)。bootstrap には入れない(bootstrap の状態はローカルだけにあるため)
-- [ ] 月額の上限を決め、AWS Budgets を共通の置き場所に作る〔必須〕
+  - 済み。terraform/global/main.tf(キーは global/terraform.tfstate)を作り、init と plan(No changes)を確認。permissions.md に apply する人の節を足した(2026-11-01)
+- [ ] 月額の上限を決め、AWS Budgets を共通の置き場所に作る〔必須〕 ← 今ここ
   - 通知先のメールは変数で渡す。.gitignore に `*.tfvars` を足す(`*.tfvars.example` は除く)
 - [ ] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
   - 期限で消すルールは、iceberg/ に掛けない(消すのは Iceberg の expire / vacuum に任せる)

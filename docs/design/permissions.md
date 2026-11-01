@@ -18,6 +18,17 @@
 | `ecom-dev-reader` | 集計結果の読み取り(アプリ、分析) | `portfolio-admin` |
 | `ecom-dev-deployer` | GitHub Actions からの Terraform の実行 | GitHub の OIDC(このリポジトリの `main` だけ) |
 
+## Terraform を apply する人
+
+| 場所 | apply する人 | 状態ファイルの置き場所 |
+|---|---|---|
+| terraform/bootstrap | `portfolio-admin`(手元で実行) | ローカルだけ |
+| terraform/global(Budgets、OIDC など、アカウントに1つのもの) | `portfolio-admin`(手元で実行) | S3(`global/terraform.tfstate`) |
+| terraform/envs/dev | `portfolio-admin`(手元で実行。のちに deployer) | S3(`envs/dev/terraform.tfstate`) |
+
+- global は、環境を作り直しても消えないよう、環境(envs/)とは別の状態ファイルに分ける。
+- bootstrap に共通リソースを入れない理由: bootstrap の状態はローカルだけにあり、マシンが壊れると失われるため。
+
 ## S3 の権限
 
 凡例: 読 = 読み取り、書 = 書き込みと削除、置 = 書き込みだけ(読み取りと削除はしない)、— = 権限なし。
