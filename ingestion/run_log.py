@@ -1,7 +1,7 @@
 """取り込みの出来事を、JSON Lines で記録する。"""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -11,7 +11,7 @@ class RunLog:
     def __init__(self, log_dir: Path, table: str, batch_id: str) -> None:
         self.table = table
         self.batch_id = batch_id
-        run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        run_date = datetime.now(UTC).strftime("%Y-%m-%d")
         self.path = (
             log_dir
             / "ingest"
@@ -43,7 +43,7 @@ class RunLog:
             message += f" (例: {', '.join(samples)})"
 
         record = {
-            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "level": level,
             "batch_id": self.batch_id,
             "table": self.table,

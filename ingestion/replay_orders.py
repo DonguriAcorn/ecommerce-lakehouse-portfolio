@@ -38,12 +38,18 @@ EVENT_TIMESTAMP_COLUMNS = [
 ]
 
 
-def load_orders(csv_path: Path) -> pd.DataFrame:
-    """CSV を読み込み、日時の列を日時型に変換する。"""
-    df = pd.read_csv(csv_path, dtype=str)
+def convert_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+    """日時の列を日時型に変換する(検証を通った表に使う)。"""
+    # 元の表を書き換えないよう、複製してから変換する
+    df = df.copy()
     for column in TIMESTAMP_COLUMNS:
         df[column] = pd.to_datetime(df[column])
     return df
+
+
+def load_orders(csv_path: Path) -> pd.DataFrame:
+    """CSV を読み込み、日時の列を日時型に変換する(検証なし。確認用)。"""
+    return convert_timestamps(pd.read_csv(csv_path, dtype=str))
 
 
 def build_events(orders: pd.DataFrame) -> pd.DataFrame:
