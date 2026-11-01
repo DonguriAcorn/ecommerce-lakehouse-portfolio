@@ -43,7 +43,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 ## リポジトリの構成
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
-- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、build_events、build_snapshot、write_snapshot。run_replay.py は、期間を指定して日付ごとに書き出す実行役)
+- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、convert_timestamps、build_events、build_snapshot、write_snapshot。run_log.py に RunLog(JSON Lines のログ)。validate_orders.py に read_orders_csv、validate_orders、IngestStop(停止と隔離の判定)。run_replay.py は、期間を指定して日付ごとに書き出す実行役)
 - sql/silver: Silver の SQL(create_orders.sql、merge_orders.sql、check_orders_rerun.sql。フェーズ2で dbt に移す)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md
@@ -64,10 +64,11 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 
 ## 現在の状態
-- 途中経過: エラーの設計の方針(error-handling.md)を書き、permissions.md に logs/ と quarantine/ を足した。iam.tf で ingest ロールに logs/ と quarantine/ への PutObject と一覧の権限を足し、dev に apply 済み(再 plan は No changes)。run_replay.py の実装は、まだ。
-- 次の1手: run_replay.py に、ログ(logs/)と隔離(quarantine/)を入れる。最初に、error-handling.md の方針を読み直し、書く内容を決める。
+- 途中経過: エラーの設計の方針を書き、ingest ロールの権限を dev に apply 済み。run_log.py と validate_orders.py ができた(コミット済み。実データは隔離0件、停止の3つの場合も確認)。run_replay.py への組み込みは、まだ。
+- 次の1手: run_replay.py に、ログと隔離を組み込む。分担の案は、隔離の Parquet を書く関数を Claude、main の組み込みをユーザー(骨組みとヒントを示してレビュー)。最初に、この分担でよいかを AskUserQuestion で聞く。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。
 - 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。モジュールを変えたあとは、カーネルの再起動が必要。
 - 次にやること、ADR の候補、未解決のことは、docs/tasks.md にまとめた。
+- notebooks/validate_orders_explore.ipynb は、validate_orders の動きを1つずつ確認するノートブック(Git の管理外、このマシンだけ。元のコードの A〜I の対応は、先頭のセルに書いてある)。

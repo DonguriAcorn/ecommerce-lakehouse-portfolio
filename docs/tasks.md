@@ -36,6 +36,9 @@
   - [x] ingest ロールに logs/ と quarantine/ への書き込みを足す(Terraform)
     - 済み(iam.tf)。ListBucket の prefix に 2つ、PutObject だけのステートメントを1つ足した。plan は 0 add / 1 change / 0 destroy
   - [ ] run_replay.py に、ログと隔離を入れる(Python の取り込みだけ。dbt の失敗は「Airflow の運用」で扱う)
+    - [x] ログの部品: ingestion/run_log.py(JSON Lines)
+    - [x] 検証: ingestion/validate_orders.py(停止と隔離の判定。実データは隔離0件で確認)
+    - [ ] run_replay.py に組み込む(実行の始めと終わりのログ、隔離の Parquet を quarantine/ の形で書く、停止は終了コード 1)
   - [ ] ingest ロールで iceberg/ に入れないことを確かめる
 - [ ] アカウント共通のリソースの置き場所を決める〔追加〕
   - 状態ファイルのキー(案: global/terraform.tfstate)。apply は portfolio-admin(permissions.md に行を足す)。bootstrap には入れない(bootstrap の状態はローカルだけにあるため)
