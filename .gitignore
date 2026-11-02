@@ -243,3 +243,7 @@ data/
 .DS_Store
 .vscode/
 notebooks/
+
+# Terraform の変数ファイル(本物の値が入るので除外。見本は残す)
+*.tfvars
+!*.tfvars.example
