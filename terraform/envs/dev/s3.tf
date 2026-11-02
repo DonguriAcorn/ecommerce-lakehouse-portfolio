@@ -57,3 +57,50 @@ resource "aws_s3_bucket_policy" "lake_tls_only" {
   policy     = data.aws_iam_policy_document.lake_tls_only.json
   depends_on = [aws_s3_bucket_public_access_block.lake]
 }
+
+resource "aws_s3_bucket_lifecycle_configuration" "lake" {
+  bucket = aws_s3_bucket.lake.id
+
+  rule {
+    id     = "expire-athena-results"
+    status = "Enabled"
+
+    filter {
+      prefix = "athena-results/"
+    }
+
+    expiration {
+      days = 7
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  rule {
+    id     = "expire-logs"
+    status = "Enabled"
+
+    filter {
+      prefix = "logs/"
+    }
+
+    expiration {
+      days = 90
+    }
+  }
+
+  rule {
+    id     = "expire-quarantine"
+    status = "Enabled"
+
+    filter {
+      prefix = "quarantine/"
+    }
+
+    expiration {
+      days = 30
+    }
+  }
+}
