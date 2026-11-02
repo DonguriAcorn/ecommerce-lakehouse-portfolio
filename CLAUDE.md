@@ -30,11 +30,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 設計判断は、docs/design と ADR(docs/adr)に残す。
 
 ## セッションの始め方と終わり方
-- 始め方: ユーザーが「続きから」と言ったら、まず `git status -sb` で、未コミットと未 push を確認する。そのうえで、docs/tasks.md の「現在の状態」と「← 今ここ」を読み、3行で要約する。「次の1手」を最初のステップとして1つだけ提案して、返事を待つ。承認なしに、ファイルの変更やコマンドの実行をしない。
-- 終わり方: ユーザーが「ここまでにする」と言ったら、docs/tasks.md の更新案を示す。
-  - タスクが済んだとき: `[x]` にして「← 今ここ」を次の `[ ]` に移し、「現在の状態」を書き直す。
-  - 途中のとき: 「現在の状態」だけを更新する。
-  - 承認されたら更新し、1つのコミットにして push まで行う。
+- 始め方は skill の session-start、終わり方は skill の session-end に書いた。ユーザーが「続きから」「ここまでにする」と言ったら使う。
 - 1つのセッションは、1〜3ステップを目安に区切る。区切りで、新しいセッションにする。
 
 ## 禁止事項(Public のリポジトリ)
@@ -43,9 +39,10 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Terraform の状態ファイル(*.tfstate)と .terraform/ は、Git に入れない。
 - コミットは `git add <ファイル名>` で、対象を指定する。`git add .` は使わない。コミットと push は、区切りごとに Claude が行ってよい(git のコマンドの説明は不要)。
 - このうち、秘密のファイルとフォルダを読むこと、`git add .` などのまとめての追加、`terraform apply` / `destroy` は、.claude/settings.json の deny で機械的に止めている。
+- Claude がコミットするときは、毎回、skill の session-end の手順5〜6の確認をしてからにする。
 
 ## リポジトリの構成
-- .claude: settings.json(Git に入る禁止の設定)。skills と agents は、これから作る
+- .claude: settings.json(Git に入る禁止の設定)、skills(session-start、session-end、tf-plan)。agents は、これから作る
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/global: アカウント共通のリソース(Budgets、OIDC など。いまは空。状態は S3 の global/terraform.tfstate)
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
