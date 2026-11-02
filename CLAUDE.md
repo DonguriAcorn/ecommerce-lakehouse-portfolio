@@ -65,8 +65,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 
 ## 現在の状態
-- 途中経過: エラーの設計は全部済み。アカウント共通のリソースの置き場所も済み(terraform/global の空の部屋ができ、init と plan は No changes)。
-- 次の1手: 月額の上限を決め、AWS Budgets を terraform/global に作る。最初に、上限額の相談と、分担を AskUserQuestion で聞く。
+- 途中経過: AWS Budgets が済み(月額 10 ドル、実績 50/80/100% 通知、terraform/global)。S3 のライフサイクルも済み(dev のみ。athena-results/ 7日、logs/ 90日、quarantine/ 30日)。通知先のメールは tfvars(Git の管理外)で、.claude/settings.local.json の deny で tfvars と tfstate は読めない。
+- 次の1手: シークレット管理の方針を docs/design に書く。材料は tasks.md に書いた。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。

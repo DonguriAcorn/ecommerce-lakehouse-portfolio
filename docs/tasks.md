@@ -45,11 +45,14 @@
 - [x] アカウント共通のリソースの置き場所を決める〔追加〕
   - 状態ファイルのキー(案: global/terraform.tfstate)。apply は portfolio-admin(permissions.md に行を足す)。bootstrap には入れない(bootstrap の状態はローカルだけにあるため)
   - 済み。terraform/global/main.tf(キーは global/terraform.tfstate)を作り、init と plan(No changes)を確認。permissions.md に apply する人の節を足した(2026-11-01)
-- [ ] 月額の上限を決め、AWS Budgets を共通の置き場所に作る〔必須〕 ← 今ここ
+- [x] 月額の上限を決め、AWS Budgets を共通の置き場所に作る〔必須〕
   - 通知先のメールは変数で渡す。.gitignore に `*.tfvars` を足す(`*.tfvars.example` は除く)
-- [ ] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
+  - 済み。月額 10 ドル、実績 50/80/100% でメール通知。通知先は専用アドレスを tfvars に置く(`sensitive = true`)。.claude/settings.local.json の deny で tfvars と tfstate を読ませない(2026-11-02)
+- [x] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
   - 期限で消すルールは、iceberg/ に掛けない(消すのは Iceberg の expire / vacuum に任せる)
-- [ ] シークレット管理の方針を、設計書に書く〔必須〕
+  - 済み(dev のみ)。athena-results/ 7日、logs/ 90日、quarantine/ 30日(2026-11-02)
+- [ ] シークレット管理の方針を、設計書に書く〔必須〕 ← 今ここ
+  - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点
 - [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
 - [ ] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
 - [ ] ADR を2〜3件ずつ、3回に分けて書く
