@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: Claude Code の構成を整えている(settings.json と CLAUDE.md の整理が済み)。その前に、AWS Budgets(月額 10 ドル、terraform/global)と S3 のライフサイクル(dev のみ)が済んだ。通知先のメールは tfvars(Git の管理外)に置き、.claude/settings.json の deny で読ませない。
-- 次の1手: skills を3つ作る(session-start、session-end、tf-plan)。そのあと plan-critic を作り、シークレット管理の方針に戻る。
+- 途中経過: Claude Code の構成を作った(settings.json の禁止、CLAUDE.md の整理、skills 3つ、サブエージェント plan-critic)。session-end は動作を確かめた。session-start、tf-plan、plan-critic は、まだ使っていない(plan-critic は、作ったセッションでは読み込まれない)。その前に、AWS Budgets(月額 10 ドル、terraform/global)と S3 のライフサイクル(dev のみ)が済んだ。通知先のメールは tfvars(Git の管理外)に置き、.claude/settings.json の deny で読ませない。
+- 次の1手: 新しいセッションで「続きから」と言い、session-start の動きを確かめる。続けて /agents に plan-critic が出るかを見て、フェーズ2の計画で1回だけ試す。済んだら、シークレット管理の方針に戻る。
 
 ## 未決(着手の前に決める)
 
@@ -59,14 +59,14 @@
 - [ ] Claude Code の構成を整える〔追加〕 ← 今ここ
   - [x] .claude/settings.json に禁止の設定(秘密のフォルダ、`git add .`、`terraform apply` / `destroy`)を置く(2026-11-02)
   - [x] CLAUDE.md の矛盾を直し、「現在の状態」を tasks.md に移す(2026-11-02)
-  - [ ] skills: session-start、session-end、tf-plan
-  - [ ] サブエージェント: plan-critic
+  - [ ] skills: session-start、session-end、tf-plan(作成済み。session-end は、名前と中身の確認が動くのを確かめた。残りは次のセッションで使って確かめる)
+  - [ ] サブエージェント: plan-critic(作成済み。観点は、ルール、事実、パイプラインとしての正しさ、モダンさ、抜けと過剰。動作の確認は次のセッション)
 - [ ] シークレット管理の方針を、設計書に書く〔必須〕
-  - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点
+  - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点。守りの層(.gitignore → settings.json の deny → session-end のコミット前の確認 → pre-commit と gitleaks)。ホームの秘密フォルダ(~/.aws、~/.ssh など)の扱い
 - [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
 - [ ] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
 - [ ] ADR を2〜3件ずつ、3回に分けて書く
-  - 候補: Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由、Silver の定義を Terraform ではなく SQL(のちに dbt)で持つ理由、Airflow を選んだ理由、S3 の構成、環境の分け方とアカウント分離、スイッチロールを後回しにした理由、専用のデータカタログを使わない理由
+  - 候補: Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由、Silver の定義を Terraform ではなく SQL(のちに dbt)で持つ理由、Airflow を選んだ理由、S3 の構成、環境の分け方とアカウント分離、スイッチロールを後回しにした理由、専用のデータカタログを使わない理由、AI 開発の構成(禁止の設定、CLAUDE.md、skills、サブエージェントの使い分け)
 
 ## フェーズ2: 取り込み
 

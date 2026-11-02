@@ -65,6 +65,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - orders の縦通し: Olist の orders(99,441 件、購入日は 2016-09-04 〜 2018-10-17)を、日付ごとにリプレイして Raw → Silver(Iceberg、MERGE)まで通した。詳細は docs/design を参照。
 - テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は SQL(フェーズ2で dbt に移す)。理由は orders-vertical-slice.md の「決めたこと(2026-10-26)」を参照。
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
+- Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。
