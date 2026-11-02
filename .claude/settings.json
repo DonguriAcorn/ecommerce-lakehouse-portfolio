@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.terraform.d/**)",
+      "Read(~/.dbt/**)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.streamlit/secrets.toml)",
+      "Read(terraform/**/*.tfvars)",
+      "Read(terraform/**/*.tfstate)",
+      "Read(terraform/**/*.tfstate.backup)",
+      "Bash(git add .)",
+      "Bash(git add -A)",
+      "Bash(git add -A *)",
+      "Bash(git add --all)",
+      "Bash(git add --all *)",
+      "Bash(git add -u)",
+      "Bash(git add -u *)",
+      "Bash(terraform apply)",
+      "Bash(terraform apply *)",
+      "Bash(terraform destroy)",
+      "Bash(terraform destroy *)",
+      "Bash(terraform -chdir=* apply)",
+      "Bash(terraform -chdir=* apply *)",
+      "Bash(terraform -chdir=* destroy)",
+      "Bash(terraform -chdir=* destroy *)"
+    ]
+  }
+}
