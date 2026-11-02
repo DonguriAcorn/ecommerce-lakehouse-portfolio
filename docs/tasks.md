@@ -11,7 +11,12 @@
 - 遅れたときに後ろへ回す順: 〔後回し候補1〕質問ログ → 〔後回し候補2〕パイプライン健康状態ページ → 〔後回し候補3〕Runbook。必須は落とさない。
 - README と ADR は、全フェーズで随時書き足す。
 - 対象外(バックログ)と、入れないと決めたものは、handoff §7 を参照。
-- 更新するのは、セッションの終わり(「ここまでにする」)。CLAUDE.md の「現在の状態」と一緒に更新案を示し、承認を得てからコミットする。
+- 更新するのは、セッションの終わり(「ここまでにする」)。下の「現在の状態」と一緒に更新案を示し、承認を得てからコミットする。
+
+## 現在の状態
+
+- 途中経過: Claude Code の構成を整えている(settings.json と CLAUDE.md の整理が済み)。その前に、AWS Budgets(月額 10 ドル、terraform/global)と S3 のライフサイクル(dev のみ)が済んだ。通知先のメールは tfvars(Git の管理外)に置き、.claude/settings.json の deny で読ませない。
+- 次の1手: skills を3つ作る(session-start、session-end、tf-plan)。そのあと plan-critic を作り、シークレット管理の方針に戻る。
 
 ## 未決(着手の前に決める)
 
@@ -51,7 +56,12 @@
 - [x] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
   - 期限で消すルールは、iceberg/ に掛けない(消すのは Iceberg の expire / vacuum に任せる)
   - 済み(dev のみ)。athena-results/ 7日、logs/ 90日、quarantine/ 30日(2026-11-02)
-- [ ] シークレット管理の方針を、設計書に書く〔必須〕 ← 今ここ
+- [ ] Claude Code の構成を整える〔追加〕 ← 今ここ
+  - [x] .claude/settings.json に禁止の設定(秘密のフォルダ、`git add .`、`terraform apply` / `destroy`)を置く(2026-11-02)
+  - [x] CLAUDE.md の矛盾を直し、「現在の状態」を tasks.md に移す(2026-11-02)
+  - [ ] skills: session-start、session-end、tf-plan
+  - [ ] サブエージェント: plan-critic
+- [ ] シークレット管理の方針を、設計書に書く〔必須〕
   - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点
 - [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
 - [ ] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
