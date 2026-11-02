@@ -247,3 +247,9 @@ notebooks/
 # Terraform の変数ファイル(本物の値が入るので除外。見本は残す)
 *.tfvars
 !*.tfvars.example
+
+# 鍵と、Claude Code の個人の設定
+*.pem
+*.key
+CLAUDE.local.md
+.claude/settings.local.json

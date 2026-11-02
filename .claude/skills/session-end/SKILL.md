@@ -13,8 +13,9 @@ description: セッションの終わりに、docs/tasks.md の更新案(チェ�
 3. 決めたことがあれば、CLAUDE.md の「決めたこと」や docs/design に足す案も示す。
 4. 承認を待つ。承認されたら、変える行だけを書き換える。`git status -sb` で、コミットし忘れのファイルがないかを確かめ、`git add <ファイル名>` で対象を指定する。
 5. コミットの前に、上げてはいけないデータがないかを確かめる。
-   - ファイル名: `git diff --cached --name-only | grep -E '\.tf[v]ars$|\.tfstate|(^|/)\.env|\.parquet$|^notebooks/|^data/|secrets\.toml$|\.pem$|\.key$'`(`[v]` は v と同じ意味。local の禁止 `Bash(grep *tfvars*)` に止められないよう、tfvars の文字を続けて書かない)
-   - 中身(ファイル名と行番号だけを出し、中身は出さない): `git grep --cached -nIE '[0-9]{12}|A[KS]IA[0-9A-Z]{16}|aws_secret_access_key|BEGIN [A-Z ]*PRIVATE KEY|ghp_[A-Za-z0-9]{20,}|sk-(ant-)?[A-Za-z0-9_-]{20,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- $(git diff --cached --name-only) | cut -d: -f1,2`
+   - 対象: `git diff --cached --name-only --diff-filter=d`(消したファイルは除く)。何も出なければ、ステージ忘れなので、止まる(パスなしの git grep は、全体を検索してしまうため)。
+   - ファイル名: `git diff --cached --name-only | grep -E '\.tf[v]ars$|\.tf[s]tate|(^|/)\.env|\.parquet$|^notebooks/|^data/|secrets\.toml$|\.pem$|\.key$'`(`[v]` は v と同じ意味。秘密のファイルの名前を含むコマンドを止める見張りに、止められないようにする)
+   - 中身(ファイル名と行番号だけを出し、中身は出さない): `git grep --cached -nIE '[0-9]{12}|A[KS]IA[0-9A-Z]{16}|aws_secret_access_key|BEGIN [A-Z ]*PRIVATE KEY|ghp_[A-Za-z0-9]{20,}|sk-(ant-)?[A-Za-z0-9_-]{20,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- $(git diff --cached --name-only --diff-filter=d) | cut -d: -f1,2`
 6. どちらも何も出なければ、「確認: 問題なし」と書いて進む。1件でも出たら、コミットせずに止まり、ファイル名と行番号と、何の形に当たったかをユーザーに伝える。秘密ではない(例: 秘密でない12桁の数字)とユーザーが判断したときだけ進む。
 7. 1つのコミットにして push する。
 8. 新しいセッションにするよう、ユーザーに一言伝える。

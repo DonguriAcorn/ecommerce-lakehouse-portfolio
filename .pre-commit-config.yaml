@@ -1,0 +1,6 @@
+# コミットの前に、秘密(キー、トークンなど)が入っていないかを gitleaks で確かめる
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: Claude Code の構成を作った(settings.json の禁止、CLAUDE.md の整理、skills 3つ、サブエージェント plan-critic)。session-end は動作を確かめた。session-start、tf-plan、plan-critic は、まだ使っていない(plan-critic は、作ったセッションでは読み込まれない)。その前に、AWS Budgets(月額 10 ドル、terraform/global)と S3 のライフサイクル(dev のみ)が済んだ。通知先のメールは tfvars(Git の管理外)に置き、.claude/settings.json の deny で読ませない。
-- 次の1手: 新しいセッションで「続きから」と言い、session-start の動きを確かめる。続けて /agents に plan-critic が出るかを見て、フェーズ2の計画で1回だけ試す。済んだら、シークレット管理の方針に戻る。
+- 途中経過: Claude Code の構成を、監査(サブエージェント)の指摘で固めた。守りは5層(.gitignore → deny → PreToolUse の hook → gitleaks の pre-commit → GitHub の push protection)。hook はスクリプトへの直接の入力で 26 件を確認し、gitleaks は偽のトークンで止まるのを確認した。session-start と session-end は動作を確認した。hook、allow / ask、plan-critic の変更(WebFetch、sonnet)は、新しいセッションで読み込まれるので、本物の動きはまだ見ていない。VS Code の拡張機能では、/agents に plan-critic が出ないことがある(一覧には読み込まれていた)。
+- 次の1手: 新しいセッションで「続きから」と言う。Claude に `git add -f` を試させ、hook で止まるのを見る。続けて、plan-critic をフェーズ2の計画で1回だけ試す。済んだら、skills と plan-critic のチェックを付け、シークレット管理の方針に戻る。
 
 ## 未決(着手の前に決める)
 
@@ -52,17 +52,20 @@
   - 済み。terraform/global/main.tf(キーは global/terraform.tfstate)を作り、init と plan(No changes)を確認。permissions.md に apply する人の節を足した(2026-11-01)
 - [x] 月額の上限を決め、AWS Budgets を共通の置き場所に作る〔必須〕
   - 通知先のメールは変数で渡す。.gitignore に `*.tfvars` を足す(`*.tfvars.example` は除く)
-  - 済み。月額 10 ドル、実績 50/80/100% でメール通知。通知先は専用アドレスを tfvars に置く(`sensitive = true`)。.claude/settings.local.json の deny で tfvars と tfstate を読ませない(2026-11-02)
+  - 済み。月額 10 ドル、実績 50/80/100% でメール通知。通知先は専用アドレスを tfvars に置く(`sensitive = true`)。.claude/settings.json の deny で tfvars と tfstate を読ませない(2026-11-02)
 - [x] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
   - 期限で消すルールは、iceberg/ に掛けない(消すのは Iceberg の expire / vacuum に任せる)
   - 済み(dev のみ)。athena-results/ 7日、logs/ 90日、quarantine/ 30日(2026-11-02)
 - [ ] Claude Code の構成を整える〔追加〕 ← 今ここ
   - [x] .claude/settings.json に禁止の設定(秘密のフォルダ、`git add .`、`terraform apply` / `destroy`)を置く(2026-11-02)
   - [x] CLAUDE.md の矛盾を直し、「現在の状態」を tasks.md に移す(2026-11-02)
-  - [ ] skills: session-start、session-end、tf-plan(作成済み。session-end は、名前と中身の確認が動くのを確かめた。残りは次のセッションで使って確かめる)
+  - [ ] skills: session-start、session-end、tf-plan(作成済み。session-start と session-end は確認済み。tf-plan は、事前の fmt と validate だけ手で確認。plan までの通しは、次に Terraform を変えたときに確かめる)
   - [ ] サブエージェント: plan-critic(作成済み。観点は、ルール、事実、パイプラインとしての正しさ、モダンさ、抜けと過剰。動作の確認は次のセッション)
+  - [x] 監査(サブエージェント)の指摘を直す: 食い違いの修正、PreToolUse の hook(guard-bash.sh)、gitleaks の pre-commit、allow と ask(2026-11-02)
+  - あとで入れる: adr-writer の skill(フェーズ1の最後)/ PostToolUse の自動整形、athena-query と dbt-run の skill、AWS の文書の MCP(フェーズ2)/ dbt-reviewer のサブエージェント(フェーズ3)/ 任意: 学習モードの出力スタイル、GitHub Actions での Claude のレビュー
+  - 入れない: AWS API MCP(AWS を変えるのはユーザー)、GitHub MCP(不要)、code-reviewer と security のサブエージェント(組み込みの /code-review と /security-review で足りる)、test-writer(ユーザーが書く方針)、plugins、Sandbox(様子見)
 - [ ] シークレット管理の方針を、設計書に書く〔必須〕
-  - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点。守りの層(.gitignore → settings.json の deny → session-end のコミット前の確認 → pre-commit と gitleaks)。ホームの秘密フォルダ(~/.aws、~/.ssh など)の扱い
+  - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点。守りの層(.gitignore → settings.json の deny → PreToolUse の hook → pre-commit と gitleaks → GitHub の push protection。session-end の確認はアカウント ID とメール用)。ホームの秘密フォルダ(~/.aws、~/.ssh など)の扱い
 - [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
 - [ ] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
 - [ ] ADR を2〜3件ずつ、3回に分けて書く
@@ -106,7 +109,7 @@
 
 完了の目安: PR で lint・テスト・plan・`dbt build` が動き、main へのマージで、test に Terraform と dbt が自動で反映される
 
-- [ ] sqlfluff と pre-commit〔推奨〕
+- [ ] sqlfluff と pre-commit〔推奨〕(gitleaks の pre-commit だけは、フェーズ1に前倒しした)
 - [ ] test / prod の環境を作る(フェーズ1のモジュールを使う)〔必須〕
 - [ ] test / prod のデータを用意する〔追加〕
 - [ ] GitHub Actions から OIDC で接続: deployer ロール、PR 用の plan ロール、CI 専用のロール〔必須〕(CI から dev の本物のテーブルに書けないようにする)

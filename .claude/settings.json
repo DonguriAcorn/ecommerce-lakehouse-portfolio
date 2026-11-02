@@ -1,5 +1,24 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git grep *)",
+      "Bash(uv run pytest)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run pre-commit run *)",
+      "Bash(terraform -chdir=* plan *)",
+      "Bash(terraform -chdir=* validate)",
+      "Bash(terraform -chdir=* fmt -check *)",
+      "Bash(aws sts get-caller-identity *)"
+    ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)"
+    ],
     "deny": [
       "Read(~/.aws/**)",
       "Read(~/.ssh/**)",
@@ -26,7 +45,26 @@
       "Bash(terraform -chdir=* apply)",
       "Bash(terraform -chdir=* apply *)",
       "Bash(terraform -chdir=* destroy)",
-      "Bash(terraform -chdir=* destroy *)"
+      "Bash(terraform -chdir=* destroy *)",
+      "Bash(git add -f *)",
+      "Bash(git add --force *)",
+      "Bash(git commit -a *)",
+      "Bash(git commit -am *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(aws s3 rm *)",
+      "Bash(aws s3 rb *)",
+      "Bash(aws configure export-credentials *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.sh" }
+        ]
+      }
     ]
   }
 }

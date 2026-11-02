@@ -20,12 +20,10 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 説明は、目的(なぜ必要か)→ たとえ(例: 荷物の追跡スタンプ)→ 実データの1〜2件の例 → コード、の順にする。表と専門用語を最初に並べない。ノートブックは1セル1処理にし、想定の出力をコメント(`# 出力:`)に書く。
 - Iceberg の設定(table_type、パーティション、プロパティ、MERGE、スナップショットなど)は、項目ごとに「何をするか」と「なぜその値か」を説明する。
 - 大きな方針変更(フェーズの計画、スコープや順番の変更、データが消える恐れのある作業)では、承認の前に、批評役のサブエージェント plan-critic(.claude/agents/plan-critic.md)に計画を3回レビューさせる。ふだんの設計書には使わない。
-- ファイルは `cat > ファイル << 'EOF'`(上書き)で作る。追記(`>>`)は重複するので、使うときは、重複防止の確認(`grep -q ... ||`)を付ける。例外: docs/ の下の既存ファイルは、差分を示して承認を得たうえで、変える行だけを書き換えてよい。
+- Claude が書くファイルは、Write / Edit ツールで作る(VS Code で差分を見て承認できる)。ユーザーがターミナルで作るときは `cat > ファイル << 'EOF'`(上書き)を使い、追記(`>>`)には重複防止の確認(`grep -q ... ||`)を付ける。docs/ の下の既存ファイルは、差分を示して承認を得てから、変える行だけを書き換える。
 - Terraform は、`plan` の内容を読んで説明してから `apply` する。削除(`-`)や置き換え(`-/+`)が出たら、必ず理由を説明する。
 - AWS の操作は、実行を CLI かコードで行い(再現性と自動化のため)、結果の確認を GUI(マネジメントコンソール)で行う。コマンドごとに、GUI ではどこが変わるかを説明する。Terraform が管理するものは、GUI で変えない。Athena のクエリエディタでの試し書きは、GUI でよい。
-- シェルの変数を使う手順は、ユーザーがターミナルに直接打つよう案内する(チャットの `!` 入力や Run ボタンは、1回ごとに別のシェルになり、変数が残らないことがある)。
-- シェルの変数を使う手順は、`&&` で1行にまとめて示す(チャットの `!` 入力でも、同じシェルで動くように)。受付番号などは、変数に入れず表示させる。
-- チャットの `!` 入力では、長い1行のコマンドが崩れて実行されないことがある。長いコマンドは、ターミナルに直接打ってもらうか、読むだけの操作なら Claude が実行する。
+- シェルの変数を使う手順と長いコマンドは、`&&` で1行にまとめ、ユーザーにターミナルへ直接打ってもらう(チャットの `!` 入力は、1回ごとに別のシェルになり、長い行が崩れることもある)。受付番号などは、変数に入れず表示させる。読むだけの操作は Claude が実行する。
 - 長いエラーや出力は、要点だけを扱う(トークンの節約)。
 - 設計判断は、docs/design と ADR(docs/adr)に残す。
 
@@ -38,11 +36,12 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 元データ(data/ 、*.parquet)とノートブック(notebooks/)は、Git に入れない(.gitignore で除外済み)。
 - Terraform の状態ファイル(*.tfstate)と .terraform/ は、Git に入れない。
 - コミットは `git add <ファイル名>` で、対象を指定する。`git add .` は使わない。コミットと push は、区切りごとに Claude が行ってよい(git のコマンドの説明は不要)。
-- このうち、秘密のファイルとフォルダを読むこと、`git add .` などのまとめての追加、`terraform apply` / `destroy` は、.claude/settings.json の deny で機械的に止めている。
-- Claude がコミットするときは、毎回、skill の session-end の手順5〜6の確認をしてからにする。
+- このうち、秘密のファイルとフォルダを読むこと、`git add .` などのまとめての追加、`terraform apply` / `destroy` は、.claude/settings.json の deny と hook で止める。deny は文字列の照合なので完全ではない。最後の守りは、コミットの前の gitleaks にする。
+- Claude がコミットするときは、毎回、skill の session-end の「上げてはいけないデータの確認」をしてからにする。
 
 ## リポジトリの構成
-- .claude: settings.json(Git に入る禁止の設定)、skills(session-start、session-end、tf-plan)、agents(plan-critic)
+- .claude: settings.json(Git に入る allow / ask / deny と hook の登録)、hooks(guard-bash.sh: 危ない Bash を止める)、skills(session-start、session-end、tf-plan)、agents(plan-critic、モデルは sonnet)
+- .pre-commit-config.yaml: コミットの前の gitleaks(`uv run pre-commit install` は、マシンごとに1回)
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/global: アカウント共通のリソース(Budgets、OIDC など。いまは空。状態は S3 の global/terraform.tfstate)
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
@@ -65,7 +64,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - orders の縦通し: Olist の orders(99,441 件、購入日は 2016-09-04 〜 2018-10-17)を、日付ごとにリプレイして Raw → Silver(Iceberg、MERGE)まで通した。詳細は docs/design を参照。
 - テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は SQL(フェーズ2で dbt に移す)。理由は orders-vertical-slice.md の「決めたこと(2026-10-26)」を参照。
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
-- Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。
+- Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny と hook(最後の守りは gitleaks)、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。あとで入れるものと入れないものは、tasks.md に書いた。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。
