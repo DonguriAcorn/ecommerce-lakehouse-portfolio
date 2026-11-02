@@ -19,7 +19,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 分からないことや、選んでほしいこと(例: 保存期間、名前の付け方)は、文章でなく AskUserQuestion の選択肢で聞く。推奨の案を最初に置く。「OK」で進めるかの確認は、文章でよい。
 - 説明は、目的(なぜ必要か)→ たとえ(例: 荷物の追跡スタンプ)→ 実データの1〜2件の例 → コード、の順にする。表と専門用語を最初に並べない。ノートブックは1セル1処理にし、想定の出力をコメント(`# 出力:`)に書く。
 - Iceberg の設定(table_type、パーティション、プロパティ、MERGE、スナップショットなど)は、項目ごとに「何をするか」と「なぜその値か」を説明する。
-- 大きな方針変更(フェーズの計画、スコープや順番の変更、データが消える恐れのある作業)では、承認の前に、批評役のサブエージェントに計画を3回レビューさせる。ふだんの設計書には使わない。
+- 大きな方針変更(フェーズの計画、スコープや順番の変更、データが消える恐れのある作業)では、承認の前に、批評役のサブエージェント plan-critic(.claude/agents/plan-critic.md)に計画を3回レビューさせる。ふだんの設計書には使わない。
 - ファイルは `cat > ファイル << 'EOF'`(上書き)で作る。追記(`>>`)は重複するので、使うときは、重複防止の確認(`grep -q ... ||`)を付ける。例外: docs/ の下の既存ファイルは、差分を示して承認を得たうえで、変える行だけを書き換えてよい。
 - Terraform は、`plan` の内容を読んで説明してから `apply` する。削除(`-`)や置き換え(`-/+`)が出たら、必ず理由を説明する。
 - AWS の操作は、実行を CLI かコードで行い(再現性と自動化のため)、結果の確認を GUI(マネジメントコンソール)で行う。コマンドごとに、GUI ではどこが変わるかを説明する。Terraform が管理するものは、GUI で変えない。Athena のクエリエディタでの試し書きは、GUI でよい。
@@ -42,7 +42,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Claude がコミットするときは、毎回、skill の session-end の手順5〜6の確認をしてからにする。
 
 ## リポジトリの構成
-- .claude: settings.json(Git に入る禁止の設定)、skills(session-start、session-end、tf-plan)。agents は、これから作る
+- .claude: settings.json(Git に入る禁止の設定)、skills(session-start、session-end、tf-plan)、agents(plan-critic)
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/global: アカウント共通のリソース(Budgets、OIDC など。いまは空。状態は S3 の global/terraform.tfstate)
 - terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
