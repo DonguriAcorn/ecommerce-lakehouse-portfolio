@@ -1,0 +1,18 @@
+# dbt プロジェクトの設定。dbt はこのファイルがあるフォルダを「プロジェクトの根」とみなす
+name: ecom_lakehouse          # プロジェクト名(英数字と _ のみ)
+version: "1.0.0"              # プロジェクトの版。dbt の動作には影響しない
+config-version: 2             # 設定ファイルの書式の版。現在は 2 で固定
+
+profile: ecom_lakehouse       # profiles.yml のどの接続設定を使うか(profiles.yml の先頭の名前と一致させる)
+
+model-paths: ["models"]       # モデル(SQL)を置くフォルダ
+test-paths: ["tests"]         # dbt のテストを置くフォルダ(のちに使う)
+macro-paths: ["macros"]       # マクロ(SQL の部品)を置くフォルダ(のちに使う)
+
+models:
+  ecom_lakehouse:             # このプロジェクトのモデル全体への既定値
+    silver:                   # models/silver/ の下のモデルへの設定
+      +materialized: incremental        # 毎回作り直さず、差分だけ足す形にする
+      +table_type: iceberg              # Silver と同じ Iceberg 形式
+      +format: parquet                  # ファイル形式
+      +write_compression: zstd          # 圧縮方式。既存の Silver と同じ

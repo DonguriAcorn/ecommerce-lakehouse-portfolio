@@ -1,0 +1,14 @@
+# 接続設定。dbt_project.yml の profile: と同じ名前を先頭に置く
+ecom_lakehouse:
+  target: dev                              # 何も指定しないとき使う接続先
+  outputs:
+    dev:
+      type: athena                         # 接続先は Athena
+      region_name: ap-northeast-1          # 東京リージョン
+      work_group: ecom-dev                 # 1 GiB 上限のある workgroup
+      database: awsdatacatalog             # Glue Data Catalog の既定名(Athena 側の「カタログ」)
+      schema: ecom_dev_silver              # モデルを作る Glue DB(Silver)
+      s3_staging_dir: "s3://{{ env_var('LAKE_BUCKET') }}/athena-results/"   # クエリ結果の一時置き場
+      s3_data_dir: "s3://{{ env_var('LAKE_BUCKET') }}/iceberg/"             # テーブルの実体の置き場(iceberg/ に固定)
+      aws_profile_name: ecom-dev-transform # 使う AWS プロファイル
+      threads: 4                           # 同時に流すクエリの数

@@ -49,14 +49,15 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - terraform/modules/lakehouse_env: 環境ごとの定義(s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf、variables.tf)
 - terraform/envs/dev: main.tf(provider、backend、モジュールの呼び出し)。test と prod は、フェーズ4で作る
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
-- ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、convert_timestamps、build_events、build_snapshot、write_snapshot。run_log.py に RunLog(JSON Lines のログ)。validate_orders.py に read_orders_csv、validate_orders、write_quarantine、IngestStop(停止と隔離の判定、隔離の書き出し)。run_replay.py は、期間を指定して、検証・ログ・隔離を呼びながら日付ごとに書き出す実行役)
-- sql/silver: Silver の SQL(create_orders.sql、merge_orders.sql、check_orders_rerun.sql。フェーズ2で dbt に移す)
+- simulator: 業務システムの代わり(パイプラインではない)。orders_events.py(CSV → 出来事の表)、make_source_events.py(data/source/ に、届くファイルを1回だけ作る。遅延もここで入れる)
+- ingestion: パイプラインの Python。run_ingest.py(期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、ingest_events.py(読む・検証・型)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログ)、schema.py(届くファイルの列。送る側との約束)
+- dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze)。Silver のモデルは models/silver/ に置く(作成中)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
-- docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md、secrets.md
-- docs/adr: 設計判断の記録(0001〜0009。以降は、判断のたびに足す)
+- docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、permissions.md、error-handling.md、secrets.md
+- docs/adr: 設計判断の記録(0001〜0010。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
-- tests: pytest のテスト(いまは test_replay_orders.py の2本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
-- dbt、airflow、app、semantic: これから使う
+- tests: pytest のテスト(test_orders_events.py と test_source_events.py の 19 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
+- airflow、app、semantic: これから使う
 
 ## 決めたこと(要点)
 - S3: 環境ごとに1バケット(`ecom-lakehouse-<環境>-<アカウント ID>`)。中を raw/、iceberg/、athena-results/ のプレフィックスで分ける。
@@ -66,8 +67,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Terraform: envs/dev、test、prod を並列に置き、状態は S3 のバックエンド(`use_lockfile`)。環境の定義は terraform/modules/lakehouse_env にまとめた(2026-11-03)。
 - Python: uv、Python 3.12(pandas、pyarrow、boto3、pytest、ruff、ipykernel)。
 - スコープ: 必須と推奨の要素は、すべて入れる。対象外は、セマンティックレイヤー Lv3、OpenLineage、IaC のセキュリティスキャン、障害注入、複数ステップ分析、専用のデータカタログ、CloudWatch。
-- orders の縦通し: Olist の orders(99,441 件、購入日は 2016-09-04 〜 2018-10-17)を、日付ごとにリプレイして Raw → Silver(Iceberg、MERGE)まで通した。詳細は docs/design を参照。
-- テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は SQL(フェーズ2で dbt に移す)。理由は orders-vertical-slice.md の「決めたこと(2026-10-26)」を参照。
+- orders のパイプライン(2026-11-03): Raw は出来事を1行ずつ並べた形(ADR 0010)。業務システムの代わり(simulator/)が data/source/ に届いた日ごとの JSON Lines を置き、パイプライン(ingestion/)はそれを検証して Raw に積むだけ。期間は 2016-09-04 〜 2018-10-18 の 775 日。Silver は dbt でイベントから「いまの状態」に畳む(作成中)。詳細は docs/design/orders-vertical-slice.md。
+- テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は dbt。理由は ADR 0003 と orders-vertical-slice.md を参照。
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 - Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny と hook(最後の守りは gitleaks)、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。あとで入れるものと入れないものは、tasks.md に書いた。
 - シークレット(2026-11-03): 鍵を持たない形(ロールを借りる、OIDC)を第一にする。鍵が要るものは SSM SecureString(`/ecom/<環境>/<用途>`)に置く。詳細は secrets.md を参照。
@@ -77,7 +78,5 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - S3 のバージョニング(2026-11-03): lake バケットで有効。非現行バージョンは 14 日で削除(バケット全体のルール)。Iceberg のスナップショットは「テーブルの履歴」、バージョニングは「ファイルの履歴」で、役割が違う。
 
 ## 運用メモ
-- 元データは data/olist/ にある(Git の管理外)。
-- 確認用のノートブック notebooks/replay_orders_explore.ipynb がある(Git の管理外、このマシンだけ)。モジュールを変えたあとは、カーネルの再起動が必要。
+- 元データは data/olist/ にある(Git の管理外)。届くファイルは data/source/、Raw は data/raw/(どちらも Git の管理外。simulator と run_ingest.py で作り直せる)。
 - 次にやること、ADR の候補、未解決のことは、docs/tasks.md にまとめた。
-- notebooks/validate_orders_explore.ipynb は、validate_orders の動きを1つずつ確認するノートブック(Git の管理外、このマシンだけ。元のコードの A〜I の対応は、先頭のセルに書いてある)。

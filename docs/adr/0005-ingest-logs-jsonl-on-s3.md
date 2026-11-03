@@ -9,7 +9,7 @@
 
 ## 決めたこと
 
-- ログは、`logs/ingest/olist/orders/run_date=YYYY-MM-DD/batch_id=<batch_id>/events.jsonl` に、**JSON Lines**(1行 = 1つの出来事)で書く。項目は `ts`、`level`、`batch_id`、`table`、`stage`、`code`、`message` などに分ける。`message` は項目から組み立てる。
+- ログは、`logs/ingest/olist/<テーブル>/run_date=YYYY-MM-DD/batch_id=<batch_id>/events.jsonl`(例: `<テーブル>` は `orders_events`) に、**JSON Lines**(1行 = 1つの出来事)で書く。項目は `ts`、`level`、`batch_id`、`table`、`stage`、`code`、`message` などに分ける。`message` は項目から組み立てる。
 - 悪い行は、`quarantine/` に Parquet で置く。元の CSV の行を文字列のまま入れ、`_error_codes` などを足す。
 - 止める(停止)か、悪い行だけを移す(隔離)かは、基準を決めた。元の CSV がない、必要な列が欠ける、隔離が全体の 1% を超える場合は停止する。それ以外は隔離して先に進める。
 - 保存期間は、`logs/` が 90 日、`quarantine/` が 30 日。削除は S3 のライフサイクルで行う。

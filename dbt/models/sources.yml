@@ -1,0 +1,11 @@
+# dbt が「すでにある入り口」として扱うテーブルの宣言(dbt はこのテーブルを作らない)
+version: 2                                  # YAML の書式の版。2 で固定
+
+sources:
+  - name: bronze                            # source の名前。SQL では source('bronze', ...) と書く
+    database: awsdatacatalog                # Glue Data Catalog(profiles.yml の database と同じ)
+    schema: "ecom_{{ target.name }}_bronze" # 読む Glue DB。target.name は接続先の名前(いまは dev)なので ecom_dev_bronze になる
+    description: "Raw の Parquet を指す外部テーブル(Terraform の bronze.tf で管理)"  # 説明(dbt docs に出る)
+    tables:
+      - name: orders                        # テーブル名。ecom_dev_bronze.orders を指す
+        description: "Olist の注文。ingest_date(文字列)でパーティション分割されている"

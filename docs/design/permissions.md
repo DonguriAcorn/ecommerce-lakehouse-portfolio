@@ -61,6 +61,6 @@ deployer は、状態ファイル用のバケットだけ、読み書きでき�
 
 ## 実装の順番
 
-1. 縦通しに必要な `ingest` と `transform` を、最初に作る。
+1. 取り込みと変換に必要な `ingest` と `transform` を、最初に作る(実装済み)。
 2. `reader` は、Gold とアプリの段階で作る。
 3. `deployer` は、CI/CD(OIDC)の段階で作る。

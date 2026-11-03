@@ -1,113 +1,108 @@
-# orders の縦通し設計(最小スライス)
+# orders のパイプライン設計
 
-- 作成日: 2026-10-22
-- 状態: 完了(2026-10-27)
+- 更新日: 2026-11-03
+- 状態: ソース、Raw、Bronze は実装済み。Silver は dbt に移す途中(docs/tasks.md のフェーズ2「orders の Raw をイベント単位にする」の 2c)
+- 判断の理由: ADR 0003(テーブル定義の管理)、ADR 0004(Raw で型を付ける)、ADR 0010(イベント単位の Raw)
 
-## 目的
+## 流れ
 
-Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver まで縦に通し、冪等な再実行ができることを確認する。実装で見つかった課題は、権限設計と IAM に反映する。
+```
+元の CSV ─(simulator/make_source_events.py、1回だけ)→ data/source/orders_events/arrival_date=…/*.jsonl
+         ─(ingestion/run_ingest.py、1日ずつ)→ data/raw/olist/orders_events/ingest_date=…/*.parquet
+         ─(aws s3 sync、ingest ロール)→ s3://…/raw/olist/orders_events/
+         ─(外部テーブル、Terraform)→ ecom_dev_bronze.orders_events
+         ─(dbt、transform ロール)→ ecom_dev_silver.orders_from_events(Iceberg)
+```
 
-## 対象データ
+- `simulator/` は業務システムの代わりで、パイプラインではない。パイプラインは `ingestion/` と dbt。
+- 出来事の作り方と件数は、orders-data-profile.md を参照。
 
-`olist_orders_dataset.csv`(約10万行、8列)。列名と型は、ダウンロード後にヘッダーで確認する。
+## 届くファイル(ソース)
 
-| 列 | 意味 | Silver での型 |
-|---|---|---|
-| `order_id` | 注文の ID(主キー) | string |
-| `customer_id` | 顧客の ID | string |
-| `order_status` | 注文の状態 | string |
-| `order_purchase_timestamp` | 購入日時 | timestamp |
-| `order_approved_at` | 承認日時 | timestamp |
-| `order_delivered_carrier_date` | 配送業者への引き渡し日時 | timestamp |
-| `order_delivered_customer_date` | 顧客への配達日時 | timestamp |
-| `order_estimated_delivery_date` | 配達予定日 | timestamp |
-
-## リプレイの方針
-
-- 元データは最終的な状態の1回分なので、日付ごとに、その日までに分かっている状態を出力して、日次の更新を再現する。
-- 日付 D ごとに、D に何かの出来事(購入、承認、引き渡し、配達)があった注文を、D 時点で分かっている情報だけで出力する。
-- 同じ注文が、日をまたいで何度も出力される。これが MERGE(更新)が必要になる理由である。
-- キャンセルなどの日付は元データにない。最後に分かっている日付の翌日に、その状態になったことにする。合成であることは、列では持たない(下の「決めたこと」を参照)。
+- 場所: `data/source/orders_events/arrival_date=YYYY-MM-DD/orders_events_YYYYMMDD.jsonl`(Git の管理外)
+- 形式: JSON Lines(1行 = 1つの出来事)。日時は文字列(`YYYY-MM-DD HH:MM:SS`)。
+- 列と書式は、受け取り側の `ingestion/schema.py` で決める。simulator はそれに合わせる。
+- `arrival_date` は届いた日。ふつうは出来事が起きた日と同じで、遅れて届く出来事だけ後ろの日になる(`event_time` は変えない)。
+- 期間: 2016-09-04 〜 2018-10-18 の 775 日。出来事のない日(79 日)も、空のファイルを置く。最後の購入日(2018-10-17)にキャンセルされた注文の final が、翌日に届くため、最後の日は 2018-10-18。
+- 遅延の再現: `--late-share` と `--late-days` で、一部の出来事だけ後ろの日に入れる。対象は sha256 と固定の seed で決める(何度作っても同じ)。遅延ありのソースは、別のフォルダ(`--out`)に作る。
+- 作り直すとき: 前のファイルが残っていると止まる(同じ出来事が2つの日に入るのを防ぐ)。中身を確かめてから消す。
 
 ## Raw の置き方(S3)
 
-- 場所: `s3://ecom-lakehouse-dev-<アカウント ID>/raw/olist/orders/ingest_date=YYYY-MM-DD/orders_YYYYMMDD.parquet`
-- 形式は Parquet で、1日1ファイル。
-- `ingest_date` は、リプレイ上の日付(実際に実行した日ではない)。
-- 監査カラムを、ファイルに入れる。
+- 場所: `s3://ecom-lakehouse-dev-<アカウント ID>/raw/olist/orders_events/ingest_date=YYYY-MM-DD/orders_events_YYYYMMDD.parquet`
+- 形式は Parquet で、1日1ファイル。`ingest_date` は取り込んだ日で、届いた日(`arrival_date`)と同じ。
+- ローカルの `data/raw/` に S3 と同じ形で書き、`aws s3 sync` で上げる(ingest ロール。Raw の読み書きだけができる)。
+- 列は、届くファイルの9列(型を付ける)+ 監査カラム3つ。型は `ingestion/raw_writer.py` の `RAW_SCHEMA` で明示して書く(出来事のない日の 0 行のファイルも、ほかの日と同じ型になる)。
+
+| 列 | 型 | 中身 |
+|---|---|---|
+| `order_id`、`customer_id` | string | 注文と顧客の ID |
+| `order_purchase_timestamp`、`order_estimated_delivery_date` | timestamp | 購入日時と配達予定日(注文の属性。どの行にも入る) |
+| `event_type` | string | created / approved / shipped / delivered / final |
+| `event_rank` | int(int32) | 段階の順位 0〜4 |
+| `event_time` | timestamp | 出来事の日時(時刻付き) |
+| `order_status` | string | その出来事の時点で到達した状態 |
+| `is_synthetic` | boolean | 時刻を作った final なら true |
+
+監査カラム:
 
 | 列 | 中身 | 例 |
 |---|---|---|
-| `_ingested_at` | ファイルを書き出した日時(UTC。タイムゾーンの印は付けない) | 2026-10-25 02:47:04.373974 |
-| `_source_file` | Raw のファイル名 | orders_20171004.parquet |
-| `_batch_id` | 実行の識別子。呼び出す側が決める(run_replay.py では、実行時刻の UTC)。1回の実行で何日分を書いても、同じ値になる | 20261025T065417Z |
+| `_ingested_at` | ファイルを書き出した日時(UTC。タイムゾーンの印は付けない) | 2026-11-03 06:40:12.123456 |
+| `_source_file` | Raw のファイル名 | orders_events_20171004.parquet |
+| `_batch_id` | 実行の識別子。手で実行するときは run_ingest.py が実行時刻の UTC を使う。Airflow を使うようになったら、Airflow の実行 ID を渡す | 20261103T064012Z |
 
-- ローカルでは、`data/raw/` の下に S3 と同じ形で書き出してから、アップロードする。
+- タイムゾーンの印を付けない理由: Athena の `timestamp` 型(タイムゾーンなし)に合わせる。値は UTC にそろえる。
+- `_ingested_at` は書き出した時刻。S3 に置いた時刻が必要なときは、S3 側の更新時刻を見る。
 
-## Silver のテーブル
+## Bronze
 
-| 項目 | 内容 |
-|---|---|
-| 名前 | `ecom_dev_silver.orders`(Iceberg) |
-| 主キー | `order_id` |
-| 列 | 上の8列 + `_ingested_at`、`_batch_id`、`_ingest_date` |
-| パーティション | 購入月(`order_purchase_timestamp` の月) |
-| 更新の方法 | `MERGE`(同じ `order_id` なら更新、なければ追加) |
-
-## 冪等性の考え方
-
-- Raw から取り出すとき、同じ `order_id` が複数あれば、`ingest_date` が最も新しいものだけを使う。
-- 同じ日付を2回実行しても、同じ結果になる(MERGE の条件で、古い情報で新しい情報を上書きしない)。
-
-## 完了の基準
-
-- 3日分をリプレイして Silver に反映すると、件数と状態が期待どおりになる。
-- 同じ日付を再実行しても、Silver の内容が変わらない。
-
-## 今回は決めないこと
-
-- 遅延到着(日付が前後する)のデータの扱い
-- Airflow での自動化(縦に通したあとの、次の段階で行う)
-
-## 決めたこと(2026-10-25)
-
-- **合成の印の列は持たない**: Silver の列は、8列 + 監査カラムのままにする。どの注文の状態が合成なのかは、build_events のルールで、必ず同じ結果に再現できる。印が必要になったら、フェーズ3で dbt を使ってルールから作る。
-- **`_batch_id` は、関数の外で決める**: 手で実行するときは、run_replay.py が実行時刻の UTC(例: `20261025T065417Z`)を使う。Airflow を使うようになったら、Airflow の実行 ID を渡す。
-- **`_ingested_at` は、書き出した時刻にする**: ファイルの中の値は、書き出すときにしか決められない。S3 に置いた時刻が必要なときは、S3 側の更新時刻を見る。
-- **タイムゾーンの印を付けない理由**: Athena の `timestamp` 型(タイムゾーンなし)に合わせる。値は UTC にそろえる。
-
-## 決めたこと(2026-10-26)
-
-- **Bronze は外部テーブルにする**: `ecom_dev_bronze.orders` は、Raw の Parquet をそのまま読む外部テーブル。Iceberg にしない理由は、次の3つ。
+- `ecom_dev_bronze.orders_events` は、Raw の Parquet をそのまま読む外部テーブル。Iceberg にしない理由は、次の3つ。
   - Raw のファイルは Python が置くだけで、Iceberg のメタデータを更新しない。
   - Bronze は追加だけで、MERGE や DELETE を使わない。
   - Iceberg にすると、Raw と同じデータを2回持つことになる。
-- **パーティションは射影で扱う**: `ingest_date`(string、`yyyy-MM-dd`)を、範囲 2016-09-01〜2018-12-31 の1日刻みで射影する。日付が増えても、パーティションの登録(`MSCK REPAIR TABLE`)はいらない。
-- **定義は Terraform で管理する**: `terraform/modules/lakehouse_env/bronze.tf`(`aws_glue_catalog_table`)。バケット名は参照で入るので、アカウント ID をファイルに書かない。コンソールでは変更しない。
-- **列が増えたとき(将来の手順)**:
-  - Bronze: 列の一覧の最後に足す(`update in-place`)。古いファイルの値は NULL として読めるので、Raw は書き換えない。
-  - Silver: `ALTER TABLE … ADD COLUMNS` で列を足す。Iceberg は、データのファイルを書き直さない。過去の値が必要なら、backfill する。
-  - backfill の注意: MERGE は古い `ingest_date` で上書きしないので、古い日付を再実行しても値は入らない。backfill は、Bronze から Silver を作り直す(full refresh)か、専用の更新で行う。
-- **Silver の定義は、SQL ファイルで管理する**: `sql/silver/create_orders.sql`(`CREATE TABLE IF NOT EXISTS`)を、transform ロールで、AWS CLI(`aws athena start-query-execution`)から実行する。Terraform にしない理由は、次の3つ。
-  - Iceberg は、更新(MERGE)のたびに、Glue の `metadata_location` が書き換わる。Terraform で管理すると、設計図とのずれになり、`apply` で古い状態に戻す恐れがある。
-  - 列の追加は `ALTER TABLE … ADD COLUMNS` で行い、テーブルを作り直さない。
-  - silver と gold は、テーブルが増えていく。フェーズ3で dbt に移すので、dbt と同じ SQL の形にしておく。
-  - 役割の分け方: 中身が動かないもの(バケット、データベース、workgroup、IAM、Bronze)は Terraform。Iceberg のテーブルは SQL(のちに dbt)。
-- **Silver の設定**: 場所は `iceberg/silver/orders/`。パーティションは `month(order_purchase_timestamp)`(購入日時は値が変わらないので、更新で行が移動しない)。形式は Parquet、圧縮は zstd。`vacuum_*` と `optimize_*` は既定値のままにし、運用の段階(Airflow)で決める。
-- **アカウント ID の扱い**: SQL ファイルでは、バケット名を `__LAKE_BUCKET__` という目印にし、実行するときに `sed` で置き換える。同時に、`--` のコメント行を取り除く(Athena の DDL は、先頭のコメントでエラーになることがあるため)。
-- **Silver に `_ingest_date`(date)を持つ**: MERGE で「古い情報で上書きしない」を判定するための、リプレイ上の日付。`_ingested_at` は書き出した時刻なので、古い日付を書き出し直すと新しく見えてしまい、判定に使えない。dev では `ALTER TABLE … ADD COLUMNS` で足し、`create_orders.sql` にも同じ列を最後に足した。
-- **MERGE の条件**: `sql/silver/merge_orders.sql`。材料は、指定した `ingest_date` の範囲から、`row_number()` で注文ごとに最新の1行だけにする。更新は `s._ingest_date > t._ingest_date` のときだけ(`>=` にしない)。同じ日付の再実行では何も変わらない。同じ日付の訂正版を反映するときは、full refresh で行う。材料にない Silver の行は消さない(毎日の材料は、出来事のあった注文だけのため)。
+- パーティションは射影で扱う: `ingest_date`(string、`yyyy-MM-dd`)を、範囲 2016-09-01〜2018-12-31 の1日刻みで射影する。日付が増えても、パーティションの登録(`MSCK REPAIR TABLE`)はいらない。
+- 定義は Terraform で管理する: `terraform/modules/lakehouse_env/bronze.tf`。バケット名は参照で入るので、アカウント ID をファイルに書かない。コンソールでは変更しない。
+- 列が増えたとき: 列の一覧の最後に足す(`update in-place`)。古いファイルの値は NULL として読めるので、Raw は書き換えない。
 
-## 検証の結果(2026-10-27)
+## Silver(dbt、これから作る)
 
-縦通しの完了の基準を、`sql/silver/check_orders_rerun.sql` で確認した(Athena のクエリエディタ、workgroup `ecom-dev`)。
+| 項目 | 内容 |
+|---|---|
+| 名前 | `ecom_dev_silver.orders_from_events`(Iceberg。旧版の `orders` を消したので、`orders` にするかを 2c で決める) |
+| 主キー | `order_id`(1行 = 1つの注文の、いまの状態) |
+| 列 | 元の CSV と同じ8列 + 監査カラム(`_last_ingest_date` など) |
+| パーティション | 購入月(`month(order_purchase_timestamp)`)。購入日時は値が変わらないので、更新で行が移動しない |
+| 形式 | Parquet、zstd。置き場所は `iceberg/` の下(`athena-results/` はライフサイクルで消えるため) |
+| 更新の方法 | dbt の incremental + merge(`unique_key='order_id'`) |
 
-- **再実行の内容**: 最初の MERGE(10-04〜06)のあとに、10-04 だけを1回、10-04〜06 を3回、再実行した(すべて SUCCEEDED)。
-- **スナップショットの数は 1**(最初の MERGE、2026-10-26 08:08 UTC): 再実行では、更新も挿入も0行だった。Athena は、変わる行がない MERGE ではスナップショットを作らない。
-- **基準との差分**(EXCEPT の両方向): 0 行。
-- **件数**: 1,308 行で、order_id の種類の数も 1,308(重複なし)。
-- **protected_orders**: 175。10-04 にも出てくる注文のうち、10-05 以降の情報を持つ注文。10-04 だけを再実行しても、古い状態に戻らなかった。
-- **leaked_rows**: 0。承認日、引き渡し日、配達日が、取り込み日より後の行はない。
-  - `order_estimated_delivery_date` は対象外。購入時に決まる予定日なので、取り込み日より後でも仕様どおり(リプレイで空にするのは、承認、引き渡し、配達の3列だけ)。
-- **Silver の中身(Iceberg)**: 台帳(metadata.json)が3つ(CREATE、ALTER、MERGE)、.avro が2つ、データのファイルが3つ(購入月の 2017-08 / 09 / 10 で、7 / 527 / 774 行)。スナップショットの operation は overwrite。
-- **結論**: 「完了の基準」の2項目を満たしたので、orders の縦通しを完了とする。
+- 畳み方: 窓(`start_date` 〜 `end_date`)に現れた注文について、その注文の全イベント(`ingest_date <= end_date`。開始日の制限なし)を読む。状態は `event_rank` の大きい順(同じなら `event_time` の新しい順)で最新の出来事から取る。承認日時などは、`event_type` ごとの `event_time` を取り出して1行にする。
+- 古い情報で上書きしない: その注文のイベントの `ingest_date` の最大を `_last_ingest_date` として持ち、Silver の値より新しいときだけ MERGE に通す。同じ日の再実行は変化 0。
+- 同じ日の訂正: 上のガードで入らないので、Silver を全期間の窓で作り直して対応する。
+- 作り直しの事故を防ぐ: モデルに `full_refresh=false` を入れる(狭い窓で作り直すと、その窓の分だけになるため)。
+- 定義を Terraform にしない理由: Iceberg は更新のたびに Glue の `metadata_location` が書き換わり、Terraform で管理すると設計図とのずれになるため。中身が動かないもの(バケット、DB、workgroup、IAM、Bronze)は Terraform、Iceberg のテーブルは dbt。
+- 接続: `dbt/profiles.yml`。バケット名は環境変数 `LAKE_BUCKET` から読み、アカウント ID をファイルに書かない。
+
+## 答え合わせ用のコピー
+
+- `ecom_dev_silver.orders_baseline_20261103`(Iceberg、1,308 行、置き場所 `iceberg/silver/orders_baseline_20261103/`): 10-04〜06 の 3 日分の、注文ごとの状態の正解。dbt の Silver と、業務の列だけで EXCEPT して差分 0 を確かめるのに使う。
+- 差分 0 を確かめた直後に消す(Athena で `DROP TABLE`。Iceberg の DROP はデータも消し、戻せない)。
+
+## 消したファイルを戻すとき(S3)
+
+lake バケットはバージョニングが有効なので、`aws s3 rm` で消したファイルは、14 日以内なら戻せる(消すと「削除マーカー」が付くだけで、前の版は非現行として残る)。戻すには、削除マーカーを消す。
+
+```bash
+# 1. 削除マーカーの一覧(Key と VersionId を見る)
+aws s3api list-object-versions --bucket <bucket> --prefix <消したプレフィックス> --query 'DeleteMarkers[].[Key,VersionId]' --output text
+# 2. 削除マーカーを1つずつ消す(前の版が、現在の版に戻る)
+aws s3api delete-object --bucket <bucket> --key <Key> --version-id <VersionId>
+```
+
+- Iceberg のテーブルの DROP と、ローカルの `data/` の削除は戻せない。
+
+## まだ決めていないこと
+
+- 全期間を流すときの窓の幅(週か月。2d で決める)
+- 遅延ありのソースの置き場所と、Bronze での読み方(タスク3で決める)
+- Iceberg の expire / vacuum / optimize の設定(Airflow の運用のタスクで決める)
