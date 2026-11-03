@@ -51,7 +51,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
 - simulator: 業務システムの代わり(パイプラインではない)。orders_events.py(CSV → 出来事の表)、make_source_events.py(data/source/ に、届くファイルを1回だけ作る。遅延もここで入れる)
 - ingestion: パイプラインの Python。run_ingest.py(期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、ingest_events.py(読む・検証・型)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログ)、schema.py(届くファイルの列。送る側との約束)
-- dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze)。Silver のモデルは models/silver/ に置く(作成中)
+- dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze)。Silver のモデルは models/silver/ に置く(orders_from_events.sql と .yml がある)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、permissions.md、error-handling.md、secrets.md
 - docs/adr: 設計判断の記録(0001〜0010。以降は、判断のたびに足す)
@@ -74,6 +74,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - シークレット(2026-11-03): 鍵を持たない形(ロールを借りる、OIDC)を第一にする。鍵が要るものは SSM SecureString(`/ecom/<環境>/<用途>`)に置く。詳細は secrets.md を参照。
 - モジュール化と OIDC(2026-11-03): モジュールの入力は `env` と `admin_user_name`。アカウントに1つしか持てないもの(OIDC プロバイダ、Budgets)は global に置く。リソースの移動は `moved` で行い、plan を保存して削除 0 件を確かめてから apply する。理由は docs/adr を参照。
 - AI エージェント(2026-11-03): 分析エージェント(複数ステップ+pptx)はフェーズ6、運用エージェント(質問応答と診断。読み取り専用、ローカルのみ)は新設のフェーズ9。自動修正の PR は実装しない。どちらも先に設計ステップを置く。細かい仕様は、該当のステップで決める。詳細は handoff §10 と tasks.md を参照。
+- Silver の orders(2026-11-03): 名前は `orders_from_events`。dbt の incremental + merge で、窓(`--vars` の start_date / end_date。既定値なし)に届いた注文の全出来事を畳む。`{{ }}` の中に `--` のコメントを書かない(Jinja なので構文エラー)。transform ロールに Glue の版の権限を足した(permissions.md を更新)。
 - ruff と pytest(2026-11-03): ruff は E / F / I の3種類、1行 100 文字。pytest は `tests/` だけを見て、`pythonpath` にプロジェクト直下を足す。Claude が書くコードとテストには、何をしているかを日本語のコメントで残す。
 - S3 のバージョニング(2026-11-03): lake バケットで有効。非現行バージョンは 14 日で削除(バケット全体のルール)。Iceberg のスナップショットは「テーブルの履歴」、バージョニングは「ファイルの履歴」で、役割が違う。
 

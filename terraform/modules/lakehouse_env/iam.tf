@@ -144,6 +144,8 @@ data "aws_iam_policy_document" "transform" {
       "glue:CreateTable",
       "glue:UpdateTable",
       "glue:DeleteTable",
+      "glue:GetTableVersions",   # dbt-athena が、作成後に古いテーブルの版を整理するため(版の一覧を読む)
+      "glue:DeleteTableVersion", # 同じく、古い版を消す(Glue のメタデータだけ。S3 のデータは消さない)
       "glue:GetPartition",
       "glue:GetPartitions",
       "glue:BatchGetPartition",

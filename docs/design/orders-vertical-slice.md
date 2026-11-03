@@ -69,7 +69,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 名前 | `ecom_dev_silver.orders_from_events`(Iceberg。旧版の `orders` を消したので、`orders` にするかを 2c で決める) |
+| 名前 | `ecom_dev_silver.orders_from_events`(Iceberg。2c で決定。「イベントから作った」ことが名前で分かる) |
 | 主キー | `order_id`(1行 = 1つの注文の、いまの状態) |
 | 列 | 元の CSV と同じ8列 + 監査カラム(`_last_ingest_date` など) |
 | パーティション | 購入月(`month(order_purchase_timestamp)`)。購入日時は値が変わらないので、更新で行が移動しない |
@@ -83,7 +83,7 @@
 - 定義を Terraform にしない理由: Iceberg は更新のたびに Glue の `metadata_location` が書き換わり、Terraform で管理すると設計図とのずれになるため。中身が動かないもの(バケット、DB、workgroup、IAM、Bronze)は Terraform、Iceberg のテーブルは dbt。
 - 接続: `dbt/profiles.yml`。バケット名は環境変数 `LAKE_BUCKET` から読み、アカウント ID をファイルに書かない。
 
-## 答え合わせ用のコピー
+## 答え合わせ用のコピー(2026-11-03 に差分 0 を確認し、DROP 済み)
 
 - `ecom_dev_silver.orders_baseline_20261103`(Iceberg、1,308 行、置き場所 `iceberg/silver/orders_baseline_20261103/`): 10-04〜06 の 3 日分の、注文ごとの状態の正解。dbt の Silver と、業務の列だけで EXCEPT して差分 0 を確かめるのに使う。
 - 差分 0 を確かめた直後に消す(Athena で `DROP TABLE`。Iceberg の DROP はデータも消し、戻せない)。

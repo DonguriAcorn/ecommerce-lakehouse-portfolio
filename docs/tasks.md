@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。比較用コピー `ecom_dev_silver.orders_baseline_20261103`(1,308 行)だけ残す。
-- 次の1手: 2c「dbt で Silver を作る」。まず「何をするか」の説明から始める。最初に `dbt/models/sources.yml` の `orders` を `orders_events` に書き換える(ユーザーが書く)。Silver の名前(`orders_from_events` か `orders`)を決める。注意: full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET=…` が要る。
+- 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。2c で、dbt の Silver `ecom_dev_silver.orders_from_events` を作った(3日分 1,308 行、dbt tests 7本 PASS、比較用コピー baseline との差分は業務の8列で双方向 0 件)。確認後に baseline は DROP した。dbt-athena が古い版を整理するため、transform ロールに Glue の `GetTableVersions` / `DeleteTableVersion` を足した(plan は 0 追加・1 変更・0 削除)。
+- 次の1手: 2d「全期間の検証」。まず「何をするか」の説明から始める。残りの日(2017-10-07〜2018-10-18)を Raw に上げ、全期間の窓で Silver を作り、元の CSV の order_status と突き合わせる。注意: full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET="ecom-lakehouse-dev-$(aws sts get-caller-identity --profile ecom-dev-transform --query Account --output text)"` が要る。Jinja の `{{ }}` の中に `--` のコメントを書かない。基本は Claude が書く(`terraform apply` などの AWS を変える操作だけ、ユーザーが打つ)。
 
 ## 未決(着手の前に決める)
 
@@ -25,6 +25,7 @@
 - test / prod に流すデータの日数(フェーズ4)
 - 公開アプリのホスティング先と、export の置き場所(フェーズ5)
 - handoff §5 の API 取り込み(為替)を入れるか、`[~]` にするか
+- reviews / sellers / geolocation / 為替を、Gold と画面に入れるか(フェーズ3の「Gold の設計」で、画面の案から決める)
 
 ## フェーズ1: 基盤
 
@@ -79,15 +80,15 @@
 
 - [x] ruff と pytest を始める〔推奨。handoff ではフェーズ4。前倒し〕(2026-11-03: `uv run ruff check` は指摘 0 件、`uv run pytest` は 2 passed)
 - [x] lake バケットの S3 バージョニング〔追加〕(2026-11-03: dev に有効化。非現行バージョンは 14 日で削除。バケット全体にかかるルール `expire-noncurrent-versions` を足した。plan は 1 追加・1 変更・0 削除。test / prod はフェーズ4で作るときに、モジュールを通して同じ設定になる)
-- [ ] orders の Raw をイベント単位にする〔追加。ADR 0010。リプレイの共通化の前に行う〕 ← 今ここ
-  - 計画: plan-critic の3回レビュー済み(2026-11-03)。Silver は dbt で作り直す。`ingest_date` は「届いた日」。旧版(スナップショット)の Raw / Bronze / Silver と `sql/silver/` は消した(2026-11-03。plan-critic の3回レビュー済み。比較用コピー `orders_baseline_20261103` だけ残す)。
+- [ ] orders の Raw をイベント単位にする〔追加。ADR 0010。リプレイの共通化の前に行う〕
+  - 計画: plan-critic の3回レビュー済み(2026-11-03)。Silver は dbt で作り直す。`ingest_date` は「届いた日」。旧版(スナップショット)の Raw / Bronze / Silver と `sql/silver/` は消した(2026-11-03。plan-critic の3回レビュー済み。比較用コピー `orders_baseline_20261103` は、2c で差分 0 を確かめて DROP した)。
   - [x] 2a 設計と Python: ADR 0010。`simulator/`(送る側。CSV → `data/source/` の JSON Lines、`arrival_date` ごと)と `ingestion/`(パイプライン。届いたファイル → 検証・隔離 → Raw)に分けた。旧版のコードとノートブックは消し、docs/design を今の形に書き直した。見直しで、検証の抜け(順位・印・空の順位)と、空の日の Raw の型のずれを直した(2026-11-03: pytest 19 passed、ruff 0 件。ソースと Raw は全期間 394,713 件・775 日。Raw は全ファイルで型が1種類)
   - [x] 2b Terraform: Bronze `orders_events`(plan を保存、追加のみ・削除 0 を確認、apply はユーザー)(2026-11-03: apply 済み。S3 に 2016-09-04〜2017-10-06 の 398 ファイル、Bronze で 110,739 行を確認。型を直した Raw で上げ直し済み。残りの日は 2d で上げる)
-  - [ ] 2c dbt: 最初に `dbt/models/sources.yml` の `orders` を `orders_events` に書き換える(description も。それまで `dbt docs generate` と `dbt source freshness` は流さない)。Silver のモデル(名前は `orders_from_events` か `orders` かを決める。`full_refresh=false`、新しい日のときだけ更新するガード、dbt tests)。3日分を baseline と業務の列だけで比べて差分 0。差分 0 を確かめた直後に baseline を消す
-  - [ ] 2d 全期間の検証: 元の CSV の order_status と突き合わせ。同じ日の再実行と、古い日の再実行で変わらない
+  - [x] 2c dbt: `sources.yml` を `orders_events` に直し、Silver `orders_from_events` を作った。incremental + merge、購入月のパーティション、`full_refresh=false`、新しい日だけ通すガード、dbt tests 7本(2026-11-03: 3日分で 1,308 行、tests PASS、baseline と業務の8列で差分 0。確認後に baseline を DROP した)
+  - [ ] 2d 全期間の検証: 元の CSV の order_status と突き合わせ。同じ日の再実行と、古い日の再実行で変わらない ← 今ここ
   - [ ] 3 遅延到着(simulator の `--late-share` と `--late-days`。決定的に選ぶ)、スキャン量
-- [ ] orders の Silver を dbt に移す〔追加。handoff ではフェーズ3。前倒し〕(上のイベント化の 2c に統合。dbt の土台は書き、dbt debug は通った。Silver のモデルは 2c で書く)
-  - 注意: 比較用のコピーは取った(`orders_baseline_20261103`)。full-refresh はしない(Athena で Iceberg のテーブルを DROP すると、データも消える)。dbt の置き場所は iceberg/ に固定する(athena-results/ はライフサイクルで消える)
+- [x] orders の Silver を dbt に移す〔追加。handoff ではフェーズ3。前倒し〕(上のイベント化の 2c に統合。2026-11-03: 済み。比較の SQL で差分 0)
+  - 注意: 比較用のコピー(`orders_baseline_20261103`)は DROP 済み。full-refresh はしない(Athena で Iceberg のテーブルを DROP すると、データも消える)。dbt の置き場所は iceberg/ に固定する(athena-results/ はライフサイクルで消える)
   - 完了: 比較の SQL で差分が 0
 - [ ] リプレイを、どのテーブルにも使える形にする(Python。simulator と ingestion の両方。テーブルごとの日付の規則を持つ。イベント型にするかスナップショット型にするかを、テーブルごとに決める。pytest 付き)〔必須〕(案: 他のテーブルも `raw/olist/<テーブル>/` に置き、simulator → ingestion を通す。日付で動かないマスタは、最初の日に1回だけ届く形も選択肢)
 - [ ] 監査カラム(`_ingested_at`、`_source_file`、`_batch_id`)を、Raw と Silver の全テーブルに〔推奨〕(リプレイの共通化の後に行う。orders の Silver には `_source_file` が足りない)
@@ -107,7 +108,8 @@
 
 - [ ] dbt の meta / tags(owner、pii、update_frequency)〔推奨〕(PII のハッシュ化より先に。どの列が PII かを決めるため)
 - [ ] セマンティックレイヤー Lv1(dbt の YAML に、テーブルとカラムの説明)〔必須〕
-- [ ] Gold のスター型(fact_orders、dim_customer、dim_product、dim_date)〔必須〕
+- [ ] Gold の設計: 最終の画面から逆算して、各データソースの出力先を決める〔追加〕(Gold のスター型より先。ダッシュボードの画面ごとに、必要な元データと列を書き出し、reviews / sellers / geolocation / 為替を入れるかを決める。結果は docs/design に残し、判断は ADR にする)
+- [ ] Gold のスター型(fact_orders、dim_customer、dim_product、dim_date)〔必須〕(上の設計で決めた列で作る)
 - [ ] SCD Type 2〔必須〕(dim_customer。材料は customers のリプレイ)
 - [ ] dbt tests〔必須〕
 - [ ] 鮮度チェック〔必須〕(基準は今の時刻ではなく `_ingest_date`。データが 2018 年のため)

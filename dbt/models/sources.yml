@@ -7,5 +7,5 @@ sources:
     schema: "ecom_{{ target.name }}_bronze" # 読む Glue DB。target.name は接続先の名前(いまは dev)なので ecom_dev_bronze になる
     description: "Raw の Parquet を指す外部テーブル(Terraform の bronze.tf で管理)"  # 説明(dbt docs に出る)
     tables:
-      - name: orders                        # テーブル名。ecom_dev_bronze.orders を指す
-        description: "Olist の注文。ingest_date(文字列)でパーティション分割されている"
+      - name: orders_events                 # テーブル名。ecom_dev_bronze.orders_events を指す(bronze.tf の name と同じ綴り)
+        description: "Olist の注文の出来事(1行 = 1つの出来事。1注文に複数行ある)。ingest_date(文字列)でパーティション分割されている。Silver で、注文ごとの「いまの状態」に畳む"

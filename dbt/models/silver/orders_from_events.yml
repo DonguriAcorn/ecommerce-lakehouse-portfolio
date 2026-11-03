@@ -1,0 +1,47 @@
+# orders_from_events の列の説明と、dbt tests(dbt test で自動チェックする条件)
+version: 2                                  # YAML の書式の版。2 で固定
+
+models:
+  - name: orders_from_events                # orders_from_events.sql のモデルを指す
+    description: "注文ごとの「いまの状態」(1行 = 1注文)。Bronze の出来事を畳んで作る。"
+    columns:
+      - name: order_id
+        description: "注文の ID。主キー(1注文 = 1行)"
+        data_tests:                         # この列が守る条件
+          - unique                          # 重複がない(畳み方と MERGE が正しい証拠)
+          - not_null                        # 空がない
+      - name: customer_id
+        description: "注文した顧客の ID(dim_customer とつなぐ)"
+        data_tests:
+          - not_null
+      - name: order_status
+        description: "いまの状態。最新の出来事(順位が最大)の状態"
+        data_tests:
+          - not_null
+          - accepted_values:                # 決まった値のどれかである
+              arguments:
+                values:                     # 元データにある 8 種類
+                  - created
+                  - approved
+                  - invoiced
+                  - processing
+                  - shipped
+                  - delivered
+                  - canceled
+                  - unavailable
+      - name: order_purchase_timestamp
+        description: "購入日時。パーティション(購入月)の列で、後から変わらない"
+        data_tests:
+          - not_null
+      - name: order_approved_at
+        description: "承認日時。承認の出来事がなければ空"
+      - name: order_delivered_carrier_date
+        description: "運送会社への引き渡し日時。発送の出来事がなければ空"
+      - name: order_delivered_customer_date
+        description: "顧客への配達日時。配達の出来事がなければ空"
+      - name: order_estimated_delivery_date
+        description: "配達予定日"
+      - name: _last_ingest_date
+        description: "この注文の出来事が最後に届いた日。古い情報で上書きしないガードに使う"
+        data_tests:
+          - not_null

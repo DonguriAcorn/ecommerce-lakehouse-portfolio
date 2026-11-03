@@ -47,7 +47,7 @@ deployer は、状態ファイル用のバケットだけ、読み書きでき�
 | ロール | Athena | Glue(データベースとテーブル) |
 |---|---|---|
 | ingest | — | — |
-| transform | `ecom-dev` の workgroup だけ実行できる | bronze、silver、gold の3つのテーブル定義を、読み書き |
+| transform | `ecom-dev` の workgroup だけ実行できる | bronze、silver、gold の3つのテーブル定義を、読み書き(dbt-athena が古いテーブルの版を整理するため、`GetTableVersions` と `DeleteTableVersion` も含む。2026-11-03 追加) |
 | reader | `ecom-dev` の workgroup だけ実行できる | gold の読み取りだけ |
 | deployer | workgroup の管理 | データベースの管理 |
 
