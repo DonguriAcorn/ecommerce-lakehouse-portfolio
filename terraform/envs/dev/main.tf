@@ -28,3 +28,9 @@ provider "aws" {
     }
   }
 }
+
+module "env" {
+  source          = "../../modules/lakehouse_env"
+  env             = "dev"
+  admin_user_name = "portfolio-admin"
+}

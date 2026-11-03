@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: hook が本番で `git add -f` を止めるのを確認した。plan-critic をフェーズ2の計画で試し(指摘7個。要点は「着手時メモ」)、事実確認を公式の文書に絞った(効くのは次のセッションから)。シークレット管理の方針を secrets.md に書いた。Claude Code の構成は、tf-plan の通しの確認だけが残る(次に Terraform を変えたとき)。
-- 次の1手: GitHub の OIDC プロバイダを terraform/global に作る。初めての内容なので、まず OIDC の仕組みと、完成コードの説明から始める。
+- 途中経過: フェーズ1が終わった。OIDC プロバイダを global に作り、dev を terraform/modules/lakehouse_env にモジュール化し(14 件を `moved` で移動。置き換え 0、削除 0。`moved.tf` は apply 後に消した)、ADR を 0001〜0009 の 9 件書いた。tf-plan の通しも確認できた。plan-critic の3回レビューが、モジュール化の穴(手順 0、`moved` の置き場所、`tfplan` の除外)を事前に見つけた。
+- 次の1手: フェーズ2の最初のタスク「ruff と pytest を始める」。初めての内容なので、まず `pyproject.toml` の今の設定を読み、pytest と ruff の考え方の説明から始める。
 
 ## 未決(着手の前に決める)
 
@@ -56,19 +56,22 @@
 - [x] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
   - 期限で消すルールは、iceberg/ に掛けない(消すのは Iceberg の expire / vacuum に任せる)
   - 済み(dev のみ)。athena-results/ 7日、logs/ 90日、quarantine/ 30日(2026-11-02)
-- [ ] Claude Code の構成を整える〔追加〕(tf-plan の通しの確認だけが残る)
+- [x] Claude Code の構成を整える〔追加〕
   - [x] .claude/settings.json に禁止の設定(秘密のフォルダ、`git add .`、`terraform apply` / `destroy`)を置く(2026-11-02)
   - [x] CLAUDE.md の矛盾を直し、「現在の状態」を tasks.md に移す(2026-11-02)
-  - [ ] skills: session-start、session-end、tf-plan(作成済み。session-start と session-end は確認済み。tf-plan は、事前の fmt と validate だけ手で確認。plan までの通しは、次に Terraform を変えたときに確かめる)
+  - [x] skills: session-start、session-end、tf-plan(2026-11-03 に tf-plan の通しを確認。fmt → validate → plan → 読み解きまで動いた)
   - [x] サブエージェント: plan-critic(2026-11-03。フェーズ2の計画で動作を確認。観点は1体のままで偏りなし。事実確認の調べ先を公式の文書に絞った)
   - [x] 監査(サブエージェント)の指摘を直す: 食い違いの修正、PreToolUse の hook(guard-bash.sh)、gitleaks の pre-commit、allow と ask(2026-11-02)
   - あとで入れる: adr-writer の skill(フェーズ1の最後)/ PostToolUse の自動整形、athena-query と dbt-run の skill、AWS の文書の MCP(フェーズ2)/ dbt-reviewer のサブエージェント(フェーズ3)/ 任意: 学習モードの出力スタイル、GitHub Actions での Claude のレビュー
   - 入れない: AWS API MCP(AWS を変えるのはユーザー)、GitHub MCP(不要)、code-reviewer と security のサブエージェント(組み込みの /code-review と /security-review で足りる)、test-writer(ユーザーが書く方針)、plugins、Sandbox(様子見)
 - [x] シークレット管理の方針を、設計書に書く〔必須〕
   - 済み([secrets.md](design/secrets.md))。鍵を持たない形を第一にする。鍵が要るものは SSM SecureString に置く。管理者の鍵は今のままで、SSO は ADR に書く(2026-11-03)
-- [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4) ← 今ここ
-- [ ] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
-- [ ] ADR を2〜3件ずつ、3回に分けて書く
+- [x] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
+  - 済み(terraform/global/github_oidc.tf)。url と client_id_list の2項目だけ。plan は 1 add、apply 後に CLI で確認(2026-11-03)
+- [x] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
+  - 済み。入力は `env` と `admin_user_name`。dev の 14 件を移動し、apply 後も `No changes`。`moved.tf` は消した。状態のバックアップは terraform/backups/(Git の管理外)。test / prod の作成はフェーズ4(下記)(2026-11-03)
+- [x] ADR を書く
+  - 済み。0001〜0009(環境の分け方、SSO 後回し、テーブル定義、Raw の形、ログ、S3 の構成、Airflow、データカタログ、AI 開発の構成)(2026-11-03)
   - 候補: Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由、Silver の定義を Terraform ではなく SQL(のちに dbt)で持つ理由、Airflow を選んだ理由、S3 の構成、環境の分け方とアカウント分離、スイッチロールを後回しにした理由、管理者を IAM ユーザーのままにし SSO を後回しにした理由、専用のデータカタログを使わない理由、AI 開発の構成(禁止の設定、CLAUDE.md、skills、サブエージェントの使い分け)
 
 ## フェーズ2: 取り込み
@@ -79,7 +82,8 @@
 - [ ] S3 Raw〔必須〕(同上)
 - [ ] Silver の MERGE〔必須〕(同上)
 - [ ] 監査カラム(`_ingested_at`、`_source_file`、`_batch_id`)を、Raw と Silver の全テーブルに〔推奨〕(orders の Silver には `_source_file` が足りない)
-- [ ] ruff と pytest を始める〔推奨。handoff ではフェーズ4。前倒し〕(完了: `uv run pytest` と `uv run ruff check` が通る)
+- [ ] ruff と pytest を始める〔推奨。handoff ではフェーズ4。前倒し〕(完了: `uv run pytest` と `uv run ruff check` が通る) ← 今ここ
+- [ ] lake バケットの S3 バージョニング〔追加〕(2026-11-03 に、dev の lake バケットが未設定と確認。誤って消した実データを戻すため。足すときは、非現行バージョンの期限を決める)
 - [ ] orders の Silver を dbt に移す〔追加。handoff ではフェーズ3。前倒し〕
   - 注意: 先に CTAS で比較用のコピーを取る。full-refresh はしない(Athena で Iceberg のテーブルを DROP すると、データも消える)。dbt の置き場所は iceberg/ に固定する(athena-results/ はライフサイクルで消える)
   - 完了: 比較の SQL で差分が 0

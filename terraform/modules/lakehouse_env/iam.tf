@@ -3,10 +3,10 @@ data "aws_region" "current" {}
 locals {
   account_id     = data.aws_caller_identity.current.account_id
   region         = data.aws_region.current.region
-  admin_user_arn = "arn:aws:iam::${local.account_id}:user/portfolio-admin"
+  admin_user_arn = "arn:aws:iam::${local.account_id}:user/${var.admin_user_name}"
   glue_arn_base  = "arn:aws:glue:${local.region}:${local.account_id}"
-  glue_db_arn    = "${local.glue_arn_base}:database/ecom_${local.env}_*"
-  glue_table_arn = "${local.glue_arn_base}:table/ecom_${local.env}_*/*"
+  glue_db_arn    = "${local.glue_arn_base}:database/ecom_${var.env}_*"
+  glue_table_arn = "${local.glue_arn_base}:table/ecom_${var.env}_*/*"
 }
 
 data "aws_iam_policy_document" "assume_by_admin" {
@@ -62,7 +62,7 @@ data "aws_iam_policy_document" "ingest" {
 }
 
 resource "aws_iam_role" "ingest" {
-  name               = "ecom-${local.env}-ingest"
+  name               = "ecom-${var.env}-ingest"
   assume_role_policy = data.aws_iam_policy_document.assume_by_admin.json
 }
 
@@ -162,7 +162,7 @@ data "aws_iam_policy_document" "transform" {
 }
 
 resource "aws_iam_role" "transform" {
-  name               = "ecom-${local.env}-transform"
+  name               = "ecom-${var.env}-transform"
   assume_role_policy = data.aws_iam_policy_document.assume_by_admin.json
 }
 

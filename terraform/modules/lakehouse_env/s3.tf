@@ -1,8 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  env         = "dev"
-  lake_bucket = "ecom-lakehouse-${local.env}-${data.aws_caller_identity.current.account_id}"
+  lake_bucket = "ecom-lakehouse-${var.env}-${data.aws_caller_identity.current.account_id}"
 }
 
 resource "aws_s3_bucket" "lake" {

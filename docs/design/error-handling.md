@@ -104,7 +104,7 @@
 | quarantine/ | 30日 | 中身は元データの写しなので、調べて直したら不要 |
 | athena-results/ | 7日 | クエリ結果の一時ファイルで、再実行すれば作り直せる |
 
-- 実際の削除は、S3 のライフサイクル(terraform/envs/dev/s3.tf、2026-11-02 に作成)で行う。
+- 実際の削除は、S3 のライフサイクル(terraform/modules/lakehouse_env/s3.tf、2026-11-02 に作成)で行う。
 
 ## 確かめ方
 

@@ -1,5 +1,5 @@
 resource "aws_athena_workgroup" "main" {
-  name = "ecom-${local.env}"
+  name = "ecom-${var.env}"
 
   configuration {
     enforce_workgroup_configuration    = true

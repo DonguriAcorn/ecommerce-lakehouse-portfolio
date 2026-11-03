@@ -1,7 +1,7 @@
 # 権限設計表
 
 - 作成日: 2026-10-22
-- 状態: ingest と transform は実装済み(terraform/envs/dev/iam.tf)。reader と deployer は実装前
+- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。reader と deployer は実装前
 
 ## 方針
 

@@ -83,7 +83,7 @@ Olist の `orders` 1テーブルを、取り込みから Iceberg の Silver ま�
   - Bronze は追加だけで、MERGE や DELETE を使わない。
   - Iceberg にすると、Raw と同じデータを2回持つことになる。
 - **パーティションは射影で扱う**: `ingest_date`(string、`yyyy-MM-dd`)を、範囲 2016-09-01〜2018-12-31 の1日刻みで射影する。日付が増えても、パーティションの登録(`MSCK REPAIR TABLE`)はいらない。
-- **定義は Terraform で管理する**: `terraform/envs/dev/bronze.tf`(`aws_glue_catalog_table`)。バケット名は参照で入るので、アカウント ID をファイルに書かない。コンソールでは変更しない。
+- **定義は Terraform で管理する**: `terraform/modules/lakehouse_env/bronze.tf`(`aws_glue_catalog_table`)。バケット名は参照で入るので、アカウント ID をファイルに書かない。コンソールでは変更しない。
 - **列が増えたとき(将来の手順)**:
   - Bronze: 列の一覧の最後に足す(`update in-place`)。古いファイルの値は NULL として読めるので、Raw は書き換えない。
   - Silver: `ALTER TABLE … ADD COLUMNS` で列を足す。Iceberg は、データのファイルを書き直さない。過去の値が必要なら、backfill する。

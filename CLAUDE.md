@@ -44,13 +44,15 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - .claude: settings.json(Git に入る allow / ask / deny と hook の登録)、hooks(guard-bash.sh: 危ない Bash を止める)、skills(session-start、session-end、tf-plan)、agents(plan-critic、モデルは sonnet)
 - .pre-commit-config.yaml: コミットの前の gitleaks(`uv run pre-commit install` は、マシンごとに1回)
 - terraform/bootstrap: 状態ファイル用の S3 バケット
-- terraform/global: アカウント共通のリソース(Budgets、OIDC など。いまは空。状態は S3 の global/terraform.tfstate)
-- terraform/envs/dev: main.tf、s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf(test と prod は、モジュール化のあとで作る)
+- terraform/global: アカウント共通のリソース(budgets.tf、github_oidc.tf。状態は S3 の global/terraform.tfstate)
+- terraform/modules/lakehouse_env: 環境ごとの定義(s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf、variables.tf)
+- terraform/envs/dev: main.tf(provider、backend、モジュールの呼び出し)。test と prod は、フェーズ4で作る
+- terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
 - ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、convert_timestamps、build_events、build_snapshot、write_snapshot。run_log.py に RunLog(JSON Lines のログ)。validate_orders.py に read_orders_csv、validate_orders、write_quarantine、IngestStop(停止と隔離の判定、隔離の書き出し)。run_replay.py は、期間を指定して、検証・ログ・隔離を呼びながら日付ごとに書き出す実行役)
 - sql/silver: Silver の SQL(create_orders.sql、merge_orders.sql、check_orders_rerun.sql。フェーズ2で dbt に移す)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md、secrets.md
-- docs/adr: 設計判断の記録(フェーズ1の終わりに書く)
+- docs/adr: 設計判断の記録(0001〜0009。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
 - dbt、airflow、app、semantic、tests: これから使う
 
@@ -59,7 +61,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Glue: `ecom_<環境>_bronze` / `silver` / `gold` の3つ。
 - Athena: workgroup `ecom-<環境>`、1回のクエリで読める量の上限は 1 GiB。`primary` は使わせない。
 - IAM: ロールは `ecom-<環境>-ingest`(raw/ の読み書きだけ)と `ecom-<環境>-transform`。信頼ポリシーは portfolio-admin。reader と deployer は、あとで作る。AWS CLI のプロファイルは `ecom-dev-ingest` と `ecom-dev-transform`。
-- Terraform: envs/dev、test、prod を並列に置き、状態は S3 のバックエンド(`use_lockfile`)。モジュール化は、フェーズ1の最後に行う。
+- Terraform: envs/dev、test、prod を並列に置き、状態は S3 のバックエンド(`use_lockfile`)。環境の定義は terraform/modules/lakehouse_env にまとめた(2026-11-03)。
 - Python: uv、Python 3.12(pandas、pyarrow、boto3、pytest、ruff、ipykernel)。
 - スコープ: 必須と推奨の要素は、すべて入れる。対象外は、セマンティックレイヤー Lv3、OpenLineage、IaC のセキュリティスキャン、障害注入、複数ステップ分析、専用のデータカタログ、CloudWatch。
 - orders の縦通し: Olist の orders(99,441 件、購入日は 2016-09-04 〜 2018-10-17)を、日付ごとにリプレイして Raw → Silver(Iceberg、MERGE)まで通した。詳細は docs/design を参照。
@@ -67,6 +69,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 - Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny と hook(最後の守りは gitleaks)、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。あとで入れるものと入れないものは、tasks.md に書いた。
 - シークレット(2026-11-03): 鍵を持たない形(ロールを借りる、OIDC)を第一にする。鍵が要るものは SSM SecureString(`/ecom/<環境>/<用途>`)に置く。詳細は secrets.md を参照。
+- モジュール化と OIDC(2026-11-03): モジュールの入力は `env` と `admin_user_name`。アカウントに1つしか持てないもの(OIDC プロバイダ、Budgets)は global に置く。リソースの移動は `moved` で行い、plan を保存して削除 0 件を確かめてから apply する。理由は docs/adr を参照。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。

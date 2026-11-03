@@ -223,6 +223,10 @@ __marimo__/
 .terraform/
 *.tfstate
 *.tfstate.*
+# 状態ファイルのバックアップ(アカウント ID が入る)と、plan の保存ファイル
+terraform/backups/
+tfplan
+*.tfplan
 crash.log
 override.tf
 override.tf.json

@@ -8,6 +8,6 @@ locals {
 
 resource "aws_glue_catalog_database" "layers" {
   for_each     = local.glue_databases
-  name         = "ecom_${local.env}_${each.key}"
+  name         = "ecom_${var.env}_${each.key}"
   location_uri = each.value
 }
