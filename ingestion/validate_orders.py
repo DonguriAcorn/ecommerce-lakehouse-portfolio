@@ -7,8 +7,9 @@ import pandas as pd
 from ingestion.replay_orders import TIMESTAMP_COLUMNS
 from ingestion.run_log import RunLog
 
-STAGE_LOAD = "ORDERS_LOAD"
-STAGE_VALIDATE = "ORDERS_VALIDATE"
+# ログに入れる、処理の段階の名前
+STAGE_LOAD = "ORDERS_LOAD"  # CSV を読む段階
+STAGE_VALIDATE = "ORDERS_VALIDATE"  # 行を検証する段階
 
 # 元の CSV に必ず要る8列(order_id などの3列 + 日時の5列)
 REQUIRED_COLUMNS = ["order_id", "customer_id", "order_status", *TIMESTAMP_COLUMNS]
@@ -169,10 +170,13 @@ def write_quarantine(
     bad: pd.DataFrame, quarantine_dir: Path, batch_id: str
 ) -> Path | None:
     """隔離する行を Parquet に書く。0件なら、ファイルを作らない。"""
+    # 隔離する行がなければ、空のファイルを作らず、置き場所なし(None)を返す
     if bad.empty:
         return None
 
+    # 実行した日(UTC)。フォルダ名に使う
     run_date = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
+    # 置き場所は、実行日と batch_id ごとのフォルダ(Raw と同じ、パーティション風の形)
     out_path = (
         quarantine_dir
         / "olist"
@@ -182,11 +186,13 @@ def write_quarantine(
         / "orders.parquet"
     )
 
+    # どの実行で、いつ隔離したかが分かるよう、2つの列を足す(UTC、タイムゾーンの印なし)
     table = bad.assign(
         _batch_id=batch_id,
         _quarantined_at=pd.Timestamp.now(tz="UTC").tz_localize(None),
     )
 
+    # フォルダがなければ作ってから、Parquet で書く(index=False: 行番号の列は書かない)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     table.to_parquet(out_path, index=False)
     return out_path

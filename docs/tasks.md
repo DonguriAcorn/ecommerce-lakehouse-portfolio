@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: フェーズ1が終わった。OIDC プロバイダを global に作り、dev を terraform/modules/lakehouse_env にモジュール化し(14 件を `moved` で移動。置き換え 0、削除 0。`moved.tf` は apply 後に消した)、ADR を 0001〜0009 の 9 件書いた。tf-plan の通しも確認できた。plan-critic の3回レビューが、モジュール化の穴(手順 0、`moved` の置き場所、`tfplan` の除外)を事前に見つけた。AI エージェントの方向を決めた(2026-11-03)。分析エージェントはフェーズ6、運用エージェントは新設のフェーズ9(v1.3、ローカルのみ、③自動修正は実装しない)。どちらも先に「何を作るか」の設計ステップを置く。plan-critic は2回まで(3回目は未実施。着手時メモに記載)。
-- 次の1手: フェーズ2の最初のタスク「ruff と pytest を始める」。初めての内容なので、まず `pyproject.toml` の今の設定を読み、pytest と ruff の考え方の説明から始める。
+- 途中経過: フェーズ1が終わった。OIDC プロバイダを global に作り、dev を terraform/modules/lakehouse_env にモジュール化し(14 件を `moved` で移動。置き換え 0、削除 0。`moved.tf` は apply 後に消した)、ADR を 0001〜0009 の 9 件書いた。tf-plan の通しも確認できた。plan-critic の3回レビューが、モジュール化の穴(手順 0、`moved` の置き場所、`tfplan` の除外)を事前に見つけた。フェーズ2の「ruff と pytest を始める」も終わった(2026-11-03。ruff は既存コードで指摘 0 件、pytest は `convert_timestamps` の2本が通る。`ingestion/` の4ファイルに、何をしているかのコメントを足した)。フェーズ2のタスクを、作業の順番に並べ直した(総まとめの3項目は最後へ、監査カラムはリプレイの共通化の後へ)。AI エージェントの方向を決めた(2026-11-03)。分析エージェントはフェーズ6、運用エージェントは新設のフェーズ9(v1.3、ローカルのみ、③自動修正は実装しない)。どちらも先に「何を作るか」の設計ステップを置く。plan-critic は2回まで(3回目は未実施。着手時メモに記載)。
+- 次の1手: フェーズ2の「lake バケットの S3 バージョニング」。Terraform で dev の lake バケットに足す。非現行バージョンの期限を決めるところから始める(保存期間の選択なので、AskUserQuestion で聞く)。
 
 ## 未決(着手の前に決める)
 
@@ -78,22 +78,22 @@
 
 完了の目安: 全テーブル・全期間を Airflow で流し、指定した3日を再実行して、全 Silver の差分が 0
 
-- [ ] Olist のリプレイ〔必須〕(orders だけ済み。全テーブルが済んだら `[x]`)
-- [ ] S3 Raw〔必須〕(同上)
-- [ ] Silver の MERGE〔必須〕(同上)
-- [ ] 監査カラム(`_ingested_at`、`_source_file`、`_batch_id`)を、Raw と Silver の全テーブルに〔推奨〕(orders の Silver には `_source_file` が足りない)
-- [ ] ruff と pytest を始める〔推奨。handoff ではフェーズ4。前倒し〕(完了: `uv run pytest` と `uv run ruff check` が通る) ← 今ここ
-- [ ] lake バケットの S3 バージョニング〔追加〕(2026-11-03 に、dev の lake バケットが未設定と確認。誤って消した実データを戻すため。足すときは、非現行バージョンの期限を決める)
+- [x] ruff と pytest を始める〔推奨。handoff ではフェーズ4。前倒し〕(2026-11-03: `uv run ruff check` は指摘 0 件、`uv run pytest` は 2 passed)
+- [ ] lake バケットの S3 バージョニング〔追加〕(2026-11-03 に、dev の lake バケットが未設定と確認。誤って消した実データを戻すため。足すときは、非現行バージョンの期限を決める) ← 今ここ
 - [ ] orders の Silver を dbt に移す〔追加。handoff ではフェーズ3。前倒し〕
   - 注意: 先に CTAS で比較用のコピーを取る。full-refresh はしない(Athena で Iceberg のテーブルを DROP すると、データも消える)。dbt の置き場所は iceberg/ に固定する(athena-results/ はライフサイクルで消える)
   - 完了: 比較の SQL で差分が 0
 - [ ] リプレイを、どのテーブルにも使える形にする(Python。テーブルごとの日付の規則を持つ。pytest 付き)〔必須〕
+- [ ] 監査カラム(`_ingested_at`、`_source_file`、`_batch_id`)を、Raw と Silver の全テーブルに〔推奨〕(リプレイの共通化の後に行う。orders の Silver には `_source_file` が足りない)
 - [ ] 全テーブルの Bronze(Terraform)と Silver(dbt)〔必須〕
   - 対象: orders、order_items、payments、reviews、customers、sellers、products、product_category_name_translation、geolocation
   - 完了: 全テーブルが Bronze と Silver にある。件数は、キーの種類の数で照合する
 - [ ] Airflow の土台(ローカルの Docker Compose、1日分の DAG、冪等)〔必須〕
 - [ ] Airflow の運用(リトライ、失敗の通知、dbt の失敗を logs/ に残す、Iceberg の OPTIMIZE / VACUUM)〔必須〕
 - [ ] 全期間のバックフィルを、Airflow で行う〔必須〕(期間を指定して、まとめて MERGE する。完了: 全期間で、キーの種類の数が元データと一致)
+- [ ] Olist のリプレイ〔必須〕(総まとめ。orders だけ済み。全テーブルが済んだら `[x]`)
+- [ ] S3 Raw〔必須〕(総まとめ。同上)
+- [ ] Silver の MERGE〔必須〕(総まとめ。同上)
 
 ## フェーズ3: モデリング
 

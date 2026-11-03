@@ -9,6 +9,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 ## 学習モードの進め方(必ず守る)
 - ユーザーは、データ分析の経験はあるが、データエンジニアリングと AI 開発ツールは初学者。初めての内容が多いので、**1ステップずつ**進め、ユーザーが「できた」「OK」と言うまで、次に進まない。
 - コードは完成したものを示し、**1行ずつ**説明する。各コマンドは「何をするか」と「何のために実行するか」を書く。
+- Claude が書くコード(テストも含む)には、ブロックや主要な行ごとに、何をしているかを日本語のコメントで残す。周りのコードのコメントが少なくても、この方針を優先する。
 - 既定の進め方(誰が手を動かすか):
   - 初めて出てくる考え方: Claude が、完成コードと1行ずつの説明を先に示す。ユーザーが承認してから、Claude が書く。
   - すでにある形の繰り返し: ユーザーが書く。Claude は、まねる箇所と変える点を骨組みとヒントで示し、書いたコードをレビューする。
@@ -54,7 +55,8 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md、secrets.md
 - docs/adr: 設計判断の記録(0001〜0009。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
-- dbt、airflow、app、semantic、tests: これから使う
+- tests: pytest のテスト(いまは test_replay_orders.py の2本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
+- dbt、airflow、app、semantic: これから使う
 
 ## 決めたこと(要点)
 - S3: 環境ごとに1バケット(`ecom-lakehouse-<環境>-<アカウント ID>`)。中を raw/、iceberg/、athena-results/ のプレフィックスで分ける。
@@ -71,6 +73,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - シークレット(2026-11-03): 鍵を持たない形(ロールを借りる、OIDC)を第一にする。鍵が要るものは SSM SecureString(`/ecom/<環境>/<用途>`)に置く。詳細は secrets.md を参照。
 - モジュール化と OIDC(2026-11-03): モジュールの入力は `env` と `admin_user_name`。アカウントに1つしか持てないもの(OIDC プロバイダ、Budgets)は global に置く。リソースの移動は `moved` で行い、plan を保存して削除 0 件を確かめてから apply する。理由は docs/adr を参照。
 - AI エージェント(2026-11-03): 分析エージェント(複数ステップ+pptx)はフェーズ6、運用エージェント(質問応答と診断。読み取り専用、ローカルのみ)は新設のフェーズ9。自動修正の PR は実装しない。どちらも先に設計ステップを置く。細かい仕様は、該当のステップで決める。詳細は handoff §10 と tasks.md を参照。
+- ruff と pytest(2026-11-03): ruff は E / F / I の3種類、1行 100 文字。pytest は `tests/` だけを見て、`pythonpath` にプロジェクト直下を足す。Claude が書くコードとテストには、何をしているかを日本語のコメントで残す。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。
