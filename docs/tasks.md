@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: Claude Code の構成を、監査(サブエージェント)の指摘で固めた。守りは5層(.gitignore → deny → PreToolUse の hook → gitleaks の pre-commit → GitHub の push protection)。hook はスクリプトへの直接の入力で 26 件を確認し、gitleaks は偽のトークンで止まるのを確認した。session-start と session-end は動作を確認した。hook、allow / ask、plan-critic の変更(WebFetch、sonnet)は、新しいセッションで読み込まれるので、本物の動きはまだ見ていない。VS Code の拡張機能では、/agents に plan-critic が出ないことがある(一覧には読み込まれていた)。
-- 次の1手: 新しいセッションで「続きから」と言う。Claude に `git add -f` を試させ、hook で止まるのを見る。続けて、plan-critic をフェーズ2の計画で1回だけ試す。済んだら、skills と plan-critic のチェックを付け、シークレット管理の方針に戻る。
+- 途中経過: hook が本番で `git add -f` を止めるのを確認した。plan-critic をフェーズ2の計画で試し(指摘7個。要点は「着手時メモ」)、事実確認を公式の文書に絞った(効くのは次のセッションから)。シークレット管理の方針を secrets.md に書いた。Claude Code の構成は、tf-plan の通しの確認だけが残る(次に Terraform を変えたとき)。
+- 次の1手: GitHub の OIDC プロバイダを terraform/global に作る。初めての内容なので、まず OIDC の仕組みと、完成コードの説明から始める。
 
 ## 未決(着手の前に決める)
 
@@ -56,20 +56,20 @@
 - [x] S3 のライフサイクル: athena-results/、logs/、quarantine/〔必須〕
   - 期限で消すルールは、iceberg/ に掛けない(消すのは Iceberg の expire / vacuum に任せる)
   - 済み(dev のみ)。athena-results/ 7日、logs/ 90日、quarantine/ 30日(2026-11-02)
-- [ ] Claude Code の構成を整える〔追加〕 ← 今ここ
+- [ ] Claude Code の構成を整える〔追加〕(tf-plan の通しの確認だけが残る)
   - [x] .claude/settings.json に禁止の設定(秘密のフォルダ、`git add .`、`terraform apply` / `destroy`)を置く(2026-11-02)
   - [x] CLAUDE.md の矛盾を直し、「現在の状態」を tasks.md に移す(2026-11-02)
   - [ ] skills: session-start、session-end、tf-plan(作成済み。session-start と session-end は確認済み。tf-plan は、事前の fmt と validate だけ手で確認。plan までの通しは、次に Terraform を変えたときに確かめる)
-  - [ ] サブエージェント: plan-critic(作成済み。観点は、ルール、事実、パイプラインとしての正しさ、モダンさ、抜けと過剰。動作の確認は次のセッション)
+  - [x] サブエージェント: plan-critic(2026-11-03。フェーズ2の計画で動作を確認。観点は1体のままで偏りなし。事実確認の調べ先を公式の文書に絞った)
   - [x] 監査(サブエージェント)の指摘を直す: 食い違いの修正、PreToolUse の hook(guard-bash.sh)、gitleaks の pre-commit、allow と ask(2026-11-02)
   - あとで入れる: adr-writer の skill(フェーズ1の最後)/ PostToolUse の自動整形、athena-query と dbt-run の skill、AWS の文書の MCP(フェーズ2)/ dbt-reviewer のサブエージェント(フェーズ3)/ 任意: 学習モードの出力スタイル、GitHub Actions での Claude のレビュー
   - 入れない: AWS API MCP(AWS を変えるのはユーザー)、GitHub MCP(不要)、code-reviewer と security のサブエージェント(組み込みの /code-review と /security-review で足りる)、test-writer(ユーザーが書く方針)、plugins、Sandbox(様子見)
-- [ ] シークレット管理の方針を、設計書に書く〔必須〕
-  - 材料: メールは「隠す」より「見えても困らない値」にする。実務の置き場所(Secrets Manager / SSM、CI は GitHub Secrets / Variables、OIDC)。state にメールが平文で入る点。守りの層(.gitignore → settings.json の deny → PreToolUse の hook → pre-commit と gitleaks → GitHub の push protection。session-end の確認はアカウント ID とメール用)。ホームの秘密フォルダ(~/.aws、~/.ssh など)の扱い
-- [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
+- [x] シークレット管理の方針を、設計書に書く〔必須〕
+  - 済み([secrets.md](design/secrets.md))。鍵を持たない形を第一にする。鍵が要るものは SSM SecureString に置く。管理者の鍵は今のままで、SSO は ADR に書く(2026-11-03)
+- [ ] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4) ← 今ここ
 - [ ] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
 - [ ] ADR を2〜3件ずつ、3回に分けて書く
-  - 候補: Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由、Silver の定義を Terraform ではなく SQL(のちに dbt)で持つ理由、Airflow を選んだ理由、S3 の構成、環境の分け方とアカウント分離、スイッチロールを後回しにした理由、専用のデータカタログを使わない理由、AI 開発の構成(禁止の設定、CLAUDE.md、skills、サブエージェントの使い分け)
+  - 候補: Bronze を外部テーブルにした理由、Raw をスナップショットの形にした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由、Silver の定義を Terraform ではなく SQL(のちに dbt)で持つ理由、Airflow を選んだ理由、S3 の構成、環境の分け方とアカウント分離、スイッチロールを後回しにした理由、管理者を IAM ユーザーのままにし SSO を後回しにした理由、専用のデータカタログを使わない理由、AI 開発の構成(禁止の設定、CLAUDE.md、skills、サブエージェントの使い分け)
 
 ## フェーズ2: 取り込み
 
@@ -180,3 +180,11 @@
 - sqlfluff: テンプレーターは jinja にして、Athena に接続しない。
 - export: 公開アプリに AWS の認証情報を持たせない(案: Git の例外のパス、GitHub Releases、ビルド時に取得)。書き出すロール、permissions.md の `export/` 列、ライフサイクルも決める。健康状態ページは、export のときに状態の要約も出す。
 - 質問ログ: handoff §10 の「Iceberg に貯める」は、§4 の「公開アプリに AWS の認証情報を持たせない」と両立しない。
+- plan-critic の指摘(フェーズ2の計画を決めるとき、正式に3回のレビューを通す):
+  - 完了の基準をテーブルの型ごとに分ける(明細型は3日の再実行で差分0、マスタ型は全件を入れ直して同じ結果、geolocation は重複の方針を先に決める)
+  - Silver の主キーの unique / not_null は、フェーズ2の「全テーブルの Silver」の完了に含める(relationships はフェーズ3)
+  - orders の `_source_file` は、dbt への移行(別名のテーブルに作って比べる)と1回にまとめる。NULL のまま許容するかを決める
+  - バックフィルは `max_active_runs=1` で、テーブルごとに直列に流す(Iceberg の同時コミットの衝突を避ける)。日次とまとめての結果の一致を確かめる
+  - Airflow のリトライでは run_id が同じなので、ログの `batch_id` に試行番号を入れる
+  - 「全テーブルの Bronze と Silver」は、型ごとの代表の1表(order_items、reviews、sellers)から進める
+  - OPTIMIZE / VACUUM には、transform ロールに iceberg/ の削除の権限と、保持の設定が要る。VACUUM はバックフィルのあとに流す

@@ -1,4 +1,4 @@
-# プロジェクトの引き継ぎメモ(更新: 2026-11-02)
+# プロジェクトの引き継ぎメモ(更新: 2026-11-03)
 
 ## 目的
 データエンジニアのポートフォリオ。EC データ(Olist)を、取り込み → 整形 → 集計 → Streamlit のダッシュボードと AI アナリストまで流す。要件、スコープ、フェーズ計画は docs/handoff.md(原本)を読む。タスク、進捗、現在の状態は docs/tasks.md を読む。
@@ -48,7 +48,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - ingestion: リプレイと取り込みの Python(replay_orders.py に load_orders、convert_timestamps、build_events、build_snapshot、write_snapshot。run_log.py に RunLog(JSON Lines のログ)。validate_orders.py に read_orders_csv、validate_orders、write_quarantine、IngestStop(停止と隔離の判定、隔離の書き出し)。run_replay.py は、期間を指定して、検証・ログ・隔離を呼びながら日付ごとに書き出す実行役)
 - sql/silver: Silver の SQL(create_orders.sql、merge_orders.sql、check_orders_rerun.sql。フェーズ2で dbt に移す)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
-- docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md
+- docs/design: orders-vertical-slice.md、orders-data-profile.md、permissions.md、error-handling.md、secrets.md
 - docs/adr: 設計判断の記録(フェーズ1の終わりに書く)
 - notebooks: 確認用のノートブック(Git の管理外)
 - dbt、airflow、app、semantic、tests: これから使う
@@ -65,6 +65,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は SQL(フェーズ2で dbt に移す)。理由は orders-vertical-slice.md の「決めたこと(2026-10-26)」を参照。
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 - Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny と hook(最後の守りは gitleaks)、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。あとで入れるものと入れないものは、tasks.md に書いた。
+- シークレット(2026-11-03): 鍵を持たない形(ロールを借りる、OIDC)を第一にする。鍵が要るものは SSM SecureString(`/ecom/<環境>/<用途>`)に置く。詳細は secrets.md を参照。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。

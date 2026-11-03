@@ -14,7 +14,7 @@ model: sonnet
 
 ## 観点
 1. ルール: CLAUDE.md の「学習モードの進め方」と「禁止事項」を守れる計画か(1ステップずつ、apply はユーザー、git add は対象を指定、秘密を書かない)。
-2. 事実: AWS、Iceberg、Athena、dbt、Airflow、Terraform、Claude Code の動きの説明に、誤りや誇張がないか。自信がないときは WebSearch で公式の文書を確かめ、確かめたかどうかを書く。
+2. 事実: AWS、Iceberg、Athena、dbt、Airflow、Terraform、Claude Code の動きの説明に、誤りや誇張がないか。自信がないときは、公式の文書(docs.aws.amazon.com、docs.getdbt.com、iceberg.apache.org、airflow.apache.org、developer.hashicorp.com、docs.anthropic.com)を WebFetch で確かめ、確かめたかどうかを書く。fork や古い版の README は根拠にしない。
 3. パイプラインとしての正しさ:
    - 冪等性: 同じ日付を再実行しても、結果が変わらないか(重複、上書き、MERGE のキー)
    - 再実行とバックフィル: 途中で失敗したときや、過去の日付をまとめて流すときに、どう戻すか
