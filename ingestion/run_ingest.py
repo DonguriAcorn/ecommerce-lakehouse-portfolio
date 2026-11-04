@@ -32,6 +32,9 @@ def main() -> int:
     parser.add_argument(
         "--end", required=True, help="最後の日付(YYYY-MM-DD、この日も含む)"
     )
+    # 入力と出力の場所。省略すると、これまでと同じ場所(遅延ありの確認では別の場所を指定する)
+    parser.add_argument("--source-dir", type=Path, default=SOURCE_DIR, help="届いたファイルの場所")
+    parser.add_argument("--raw-dir", type=Path, default=RAW_DIR, help="Raw の書き出し先")
     args = parser.parse_args()
 
     # 1回の実行を見分ける ID(例: 20261025T103000Z)
@@ -47,8 +50,11 @@ def main() -> int:
         for day in pd.date_range(args.start, args.end, freq="D"):
             ingest_date = f"{day:%Y-%m-%d}"
             # その日に届いたファイル(届いた日 = 取り込む日。ingest_date = arrival_date)
+            # 場所は引数 --source-dir から(省略時は SOURCE_DIR)
             path = (
-                SOURCE_DIR / f"arrival_date={ingest_date}" / f"orders_events_{day:%Y%m%d}.jsonl"
+                args.source_dir
+                / f"arrival_date={ingest_date}"
+                / f"orders_events_{day:%Y%m%d}.jsonl"
             )
             # 読む(ない・壊れている → 止める)、検証する(隔離が多すぎる → 止める)
             raw = read_source_events(path, log, ingest_date)
@@ -61,7 +67,8 @@ def main() -> int:
 
             # 良い行を Raw の型にして書く
             try:
-                out_path = write_events(convert_event_types(good), day, RAW_DIR, batch_id)
+                # 書き出し先は引数 --raw-dir から(省略時は RAW_DIR)
+                out_path = write_events(convert_event_types(good), day, args.raw_dir, batch_id)
             except OSError:
                 # ディスクがいっぱい、書き込み権限がない、など。理由をログに書いてから止める
                 log.write(

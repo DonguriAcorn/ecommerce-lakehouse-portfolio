@@ -104,5 +104,5 @@ aws s3api delete-object --bucket <bucket> --key <Key> --version-id <VersionId>
 ## まだ決めていないこと
 
 - (決定 2026-11-04)全期間を流すときの窓の幅: orders は Raw が 36 MB なので、全期間 1 回で足りる。Airflow のバックフィルでは、日次・月次など、運用の形で決める
-- 遅延ありのソースの置き場所と、Bronze での読み方(タスク3で決める)
+- (決定 2026-11-04)遅延ありのソースの置き場所と読み方: 本番の Raw と Silver は上書きしない。Raw は `raw/olist_late/orders_events/`、Bronze は別テーブル `orders_events_late`(Terraform)、Silver は別テーブル `orders_from_events_late`(dbt の変数で読む元を切り替える)。確認が終わったら消す。
 - Iceberg の expire / vacuum / optimize の設定(Airflow の運用のタスクで決める)

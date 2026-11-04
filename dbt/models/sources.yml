@@ -9,3 +9,5 @@ sources:
     tables:
       - name: orders_events                 # テーブル名。ecom_dev_bronze.orders_events を指す(bronze.tf の name と同じ綴り)
         description: "Olist の注文の出来事(1行 = 1つの出来事。1注文に複数行ある)。ingest_date(文字列)でパーティション分割されている。Silver で、注文ごとの「いまの状態」に畳む"
+      - name: orders_events_late            # 遅延ありの確認用(bronze.tf の orders_events_late)。table_suffix: _late のときだけ読む。確認が終わったら消す
+        description: "orders_events と同じ列。一部の出来事が3日遅れて届く想定のコピー(確認用)"

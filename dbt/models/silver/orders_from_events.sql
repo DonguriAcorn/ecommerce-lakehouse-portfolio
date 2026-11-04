@@ -7,7 +7,13 @@
 -- unique_key='order_id': 「同じ注文」を見分けるキー
 -- partitioned_by: 購入月ごとに分ける(購入日時は変わらないので、行が月をまたいで動かない)
 -- full_refresh=false: --full-refresh を付けても作り直さない(DROP でデータが消える事故を防ぐ)
+-- table_suffix: 読む Bronze と書く Silver の名前に同じ接尾辞を付ける変数(既定は空 = 本番)
+-- 遅延ありの確認では --vars に table_suffix: _late を足す(orders_events_late を読み、orders_from_events_late に書く)
+-- 1つの変数で両方を切り替えるので、遅延ありのデータが本番の Silver に入る組み合わせにならない
+{% set suffix = var('table_suffix', '') %}
+
 {{ config(
+    alias='orders_from_events' ~ suffix,
     incremental_strategy='merge',
     unique_key='order_id',
     partitioned_by=['month(order_purchase_timestamp)'],
@@ -18,7 +24,7 @@
 -- var() に既定値を付けていないので、渡し忘れるとエラーになる(全期間を処理する事故を防ぐ)
 with window_orders as (
     select distinct order_id
-    from {{ source('bronze', 'orders_events') }}
+    from {{ source('bronze', 'orders_events' ~ suffix) }}
     where ingest_date between '{{ var("start_date") }}' and '{{ var("end_date") }}'
 ),
 
@@ -26,7 +32,7 @@ with window_orders as (
 -- 終了日で切るので、同じ窓の再実行は、いつ流しても同じ結果になる
 events as (
     select e.*
-    from {{ source('bronze', 'orders_events') }} as e
+    from {{ source('bronze', 'orders_events' ~ suffix) }} as e
     inner join window_orders as w on e.order_id = w.order_id
     where e.ingest_date <= '{{ var("end_date") }}'
 ),
