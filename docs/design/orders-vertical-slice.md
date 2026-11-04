@@ -103,6 +103,6 @@ aws s3api delete-object --bucket <bucket> --key <Key> --version-id <VersionId>
 
 ## まだ決めていないこと
 
-- 全期間を流すときの窓の幅(週か月。2d で決める)
+- (決定 2026-11-04)全期間を流すときの窓の幅: orders は Raw が 36 MB なので、全期間 1 回で足りる。Airflow のバックフィルでは、日次・月次など、運用の形で決める
 - 遅延ありのソースの置き場所と、Bronze での読み方(タスク3で決める)
 - Iceberg の expire / vacuum / optimize の設定(Airflow の運用のタスクで決める)

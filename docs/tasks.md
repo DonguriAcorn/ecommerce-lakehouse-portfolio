@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。2c で、dbt の Silver `ecom_dev_silver.orders_from_events` を作った(3日分 1,308 行、dbt tests 7本 PASS、比較用コピー baseline との差分は業務の8列で双方向 0 件)。確認後に baseline は DROP した。dbt-athena が古い版を整理するため、transform ロールに Glue の `GetTableVersions` / `DeleteTableVersion` を足した(plan は 0 追加・1 変更・0 削除)。
-- 次の1手: 2d「全期間の検証」。まず「何をするか」の説明から始める。残りの日(2017-10-07〜2018-10-18)を Raw に上げ、全期間の窓で Silver を作り、元の CSV の order_status と突き合わせる。注意: full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET="ecom-lakehouse-dev-$(aws sts get-caller-identity --profile ecom-dev-transform --query Account --output text)"` が要る。Jinja の `{{ }}` の中に `--` のコメントを書かない。基本は Claude が書く(`terraform apply` などの AWS を変える操作だけ、ユーザーが打つ)。
+- 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。2c で、dbt の Silver `ecom_dev_silver.orders_from_events` を作った(3日分 1,308 行、dbt tests 7本 PASS、比較用コピー baseline との差分は業務の8列で双方向 0 件)。確認後に baseline は DROP した。dbt-athena が古い版を整理するため、transform ロールに Glue の `GetTableVersions` / `DeleteTableVersion` を足した(plan は 0 追加・1 変更・0 削除)。2d で、全期間を Raw に上げ(775 ファイル、394,713 行)、Silver を全期間で作った(99,441 行)。元の CSV と注文ごとに突き合わせて、業務の 8 列で差分 0。同じ日と古い日の再実行でも、Silver の指紋は同じ(冪等)。
+- 次の1手: 3「遅延到着」。まず「何をするか」の説明から始める。simulator の `--late-share` と `--late-days` で、一部の出来事を後ろの日に入れ、別のフォルダに置く。Bronze での読み方と置き場所を決める(設計書の未決)。注意: full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET="ecom-lakehouse-dev-$(aws sts get-caller-identity --profile ecom-dev-transform --query Account --output text)"` が要る。Jinja の `{{ }}` の中に `--` のコメントを書かない。基本は Claude が書く(`terraform apply` などの AWS を変える操作だけ、ユーザーが打つ)。
 
 ## 未決(着手の前に決める)
 
@@ -85,8 +85,8 @@
   - [x] 2a 設計と Python: ADR 0010。`simulator/`(送る側。CSV → `data/source/` の JSON Lines、`arrival_date` ごと)と `ingestion/`(パイプライン。届いたファイル → 検証・隔離 → Raw)に分けた。旧版のコードとノートブックは消し、docs/design を今の形に書き直した。見直しで、検証の抜け(順位・印・空の順位)と、空の日の Raw の型のずれを直した(2026-11-03: pytest 19 passed、ruff 0 件。ソースと Raw は全期間 394,713 件・775 日。Raw は全ファイルで型が1種類)
   - [x] 2b Terraform: Bronze `orders_events`(plan を保存、追加のみ・削除 0 を確認、apply はユーザー)(2026-11-03: apply 済み。S3 に 2016-09-04〜2017-10-06 の 398 ファイル、Bronze で 110,739 行を確認。型を直した Raw で上げ直し済み。残りの日は 2d で上げる)
   - [x] 2c dbt: `sources.yml` を `orders_events` に直し、Silver `orders_from_events` を作った。incremental + merge、購入月のパーティション、`full_refresh=false`、新しい日だけ通すガード、dbt tests 7本(2026-11-03: 3日分で 1,308 行、tests PASS、baseline と業務の8列で差分 0。確認後に baseline を DROP した)
-  - [ ] 2d 全期間の検証: 元の CSV の order_status と突き合わせ。同じ日の再実行と、古い日の再実行で変わらない ← 今ここ
-  - [ ] 3 遅延到着(simulator の `--late-share` と `--late-days`。決定的に選ぶ)、スキャン量
+  - [x] 2d 全期間の検証: 元の CSV との突き合わせ。同じ日の再実行と、古い日の再実行で変わらない(2026-11-04: 残りの日を Raw に上げ、S3 は 775 ファイル、Bronze は 394,713 行・99,441 注文。全期間を 1 つの窓で流し、Silver は 99,441 行。CSV と注文ごとに突き合わせて、業務の 8 列すべてで差分 0。2018-10 と 2016-10 を再実行しても、Silver 全体の MD5 の指紋が同じ。窓は、Raw が 36 MB で 1 GiB の上限に収まるため、月ごとに分けず全期間 1 回で足りた)
+  - [ ] 3 遅延到着(simulator の `--late-share` と `--late-days`。決定的に選ぶ)、スキャン量 ← 今ここ
 - [x] orders の Silver を dbt に移す〔追加。handoff ではフェーズ3。前倒し〕(上のイベント化の 2c に統合。2026-11-03: 済み。比較の SQL で差分 0)
   - 注意: 比較用のコピー(`orders_baseline_20261103`)は DROP 済み。full-refresh はしない(Athena で Iceberg のテーブルを DROP すると、データも消える)。dbt の置き場所は iceberg/ に固定する(athena-results/ はライフサイクルで消える)
   - 完了: 比較の SQL で差分が 0
