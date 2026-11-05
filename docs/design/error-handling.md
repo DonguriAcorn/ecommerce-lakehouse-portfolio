@@ -1,7 +1,7 @@
 # エラーの設計(取り込み)
 
-- 更新日: 2026-11-03
-- 状態: 実装済み(`ingestion/ingest_events.py`、`ingestion/quarantine.py`、`ingestion/run_log.py`)
+- 更新日: 2026-11-05
+- 状態: 実装済み(`ingestion/ingest_table.py`、`ingestion/orders_checks.py`、`ingestion/quarantine.py`、`ingestion/run_log.py`)。全7表で共通(ADR 0011)
 
 ## 目的と範囲
 
@@ -61,7 +61,7 @@
 | `level` | ○ | INFO / WARNING / ERROR | ERROR |
 | `batch_id` | ○ | 実行の識別子 | 20261103T064012Z |
 | `table` | ○ | 対象のテーブル | orders_events |
-| `stage` | ○ | 処理の段階 | EVENTS_VALIDATE |
+| `stage` | ○ | 処理の段階 | VALIDATE |
 | `code` | ○ | 出来事の種類(決まった名前) | UNPARSABLE_TIMESTAMP |
 | `ingest_date` | | 取り込んだ日(日ごとの処理のとき) | 2017-10-04 |
 | `column` | | 関係する列 | event_time |
@@ -70,27 +70,34 @@
 | `message` | ○ | 人が読む文 | 下を参照 |
 
 - `message` の形: `[段階] 何が / どの列で / 何件 (例: …)`。列や件数がない出来事では、その部分を省く。
-  - 例: `[EVENTS_VALIDATE] 日時として読めない値があります / event_time / 3件 (例: 2017-13-45 99:00:00)`
-  - 例: `[EVENTS_LOAD] 届いたファイルがありません / data/source/orders_events/arrival_date=2017-10-04/orders_events_20171004.jsonl`
+  - 例: `[VALIDATE] 日時として読めない値があります / event_time / 3件 (例: 2017-13-45 99:00:00)`
+  - 例: `[LOAD] 届いたファイルがありません / data/source/orders_events/arrival_date=2017-10-04/orders_events_20171004.jsonl`
 - 実行の始めと終わりにも、INFO を1行ずつ書く。終わりの行に、書き出した日数と行数、隔離した行数、結果(成功 / 停止)を入れる。
 - `samples` には、ID と日時と種類の値だけを入れる。空の値と、2列の組(キーの重複)には例を付けない。住所などの個人情報の列は入れない(どの列が PII かは、フェーズ3の meta / tags で決める)。
+- 1日ごとに、全表で同じ項目の結果を1行書く(`stage` は DAY、`code` は DAY_RESULT。画面には出さない)。項目は、`table`、`ingest_date`、`status`(OK / SKIPPED_NOT_EXPECTED / 止まった理由の code)、`rows`(Raw に書いた行数)、`quarantined`(隔離した行数)、`unexpected_files`(届かないはずの日に置かれていたファイルの数)。パイプラインの健康状態ページの元にする。
 
-### stage と code の一覧(orders_events)
+### stage と code の一覧(全表で共通。「orders だけ」と書いたものは orders_checks.py)
 
 | stage | code | level | 対応 |
 |---|---|---|---|
-| EVENTS_RUN | RUN_START | INFO | 実行の始め |
-| EVENTS_RUN | RUN_END | INFO | 実行の終わり(結果、書き出した日数と行数、隔離行数) |
-| EVENTS_LOAD | SOURCE_NOT_FOUND | ERROR | 停止(ファイルがない、または読めない) |
-| EVENTS_LOAD | MISSING_COLUMN | ERROR | 停止 |
-| EVENTS_VALIDATE | EMPTY_REQUIRED | WARNING | 隔離 |
-| EVENTS_VALIDATE | DUPLICATE_KEY | WARNING | 隔離(重複したすべての行) |
-| EVENTS_VALIDATE | UNPARSABLE_TIMESTAMP | WARNING | 隔離 |
-| EVENTS_VALIDATE | UNKNOWN_EVENT_TYPE | WARNING | 隔離 |
-| EVENTS_VALIDATE | INVALID_EVENT_RANK | WARNING | 隔離 |
-| EVENTS_VALIDATE | INVALID_FLAG | WARNING | 隔離 |
-| EVENTS_VALIDATE | QUARANTINE_OVER_LIMIT | ERROR | 停止 |
-| EVENTS_WRITE | WRITE_FAILED | ERROR | 停止(それまでに書いた日は残る。同じ期間を再実行すればよい) |
+| RUN | RUN_START | INFO | 実行の始め |
+| RUN | RUN_END | INFO | 実行の終わり(結果、書き出した日数と行数、隔離行数、届かない日のファイルの数) |
+| DAY | DAY_RESULT | INFO / ERROR | 1日の結果(上の項目)。止まった日は ERROR |
+| LOAD | SOURCE_NOT_FOUND | ERROR | 停止(届くはずの日にファイルがない、または読めない) |
+| LOAD | MISSING_COLUMN | ERROR | 停止 |
+| VALIDATE | EMPTY_REQUIRED | WARNING | 隔離 |
+| VALIDATE | UNPARSABLE_TIMESTAMP | WARNING | 隔離 |
+| VALIDATE | INVALID_INT | WARNING | 隔離(整数でない値) |
+| VALIDATE | INVALID_DECIMAL | WARNING | 隔離(金額の書式でない値。小数 3 桁も、丸めると値が変わるため隔離) |
+| VALIDATE | INVALID_FLAG | WARNING | 隔離 |
+| VALIDATE | DUPLICATE_KEY | WARNING | 隔離(重複したすべての行。orders だけ) |
+| VALIDATE | UNKNOWN_EVENT_TYPE | WARNING | 隔離(orders だけ) |
+| VALIDATE | INVALID_EVENT_RANK | WARNING | 隔離(orders だけ) |
+| VALIDATE | QUARANTINE_OVER_LIMIT | ERROR | 停止 |
+| WRITE | WRITE_FAILED | ERROR | 停止(それまでに書いた日は残る。同じ期間を再実行すればよい) |
+
+- 届かないはずの日(一括型の2日目以降、期間の外)は、ファイルを読まずに飛ばす(DAY_RESULT の SKIPPED_NOT_EXPECTED)。
+- キーの重複を隔離するのは orders だけ。ほかの表は、Raw にあるがまま入れ、重複は Silver で畳む(ADR 0011)。
 
 ## 隔離
 

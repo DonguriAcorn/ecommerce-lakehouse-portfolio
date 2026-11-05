@@ -4,11 +4,12 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from ingestion.ingest_events import convert_event_types, read_source_events, validate_events
+from ingestion.ingest_table import convert_types, read_source, validate_rows
+from ingestion.orders_checks import check_orders_events
 from ingestion.quarantine import IngestStop, write_quarantine
-from ingestion.raw_writer import write_events
+from ingestion.raw_writer import write_raw
 from ingestion.run_log import RunLog
-from ingestion.schema import EVENT_COLUMNS
+from ingestion.schema import EVENT_COLUMNS, ORDERS_EVENTS
 from simulator.make_source_events import (
     assign_arrival_dates,
     pick_late_events,
@@ -16,6 +17,29 @@ from simulator.make_source_events import (
 )
 from simulator.orders_events import build_event_records
 from tests.test_orders_events import make_orders
+
+
+# --- orders の取扱説明書と追加の検証を渡す、テスト用の短い呼び方 ---
+def read_source_orders(path, log, ingest_date):
+    """orders の届いたファイルを、共通の受付で読む。"""
+    return read_source(path, ORDERS_EVENTS, log, ingest_date)
+
+
+def validate_orders(raw, log, ingest_date, **kwargs):
+    """orders を、共通の検証 + orders だけの追加の検証で確かめる。"""
+    return validate_rows(
+        raw, ORDERS_EVENTS, log, ingest_date, extra_check=check_orders_events, **kwargs
+    )
+
+
+def convert_orders(good):
+    """orders の良い行を、registry の型にする。"""
+    return convert_types(good, ORDERS_EVENTS)
+
+
+def write_orders(records, ingest_date, raw_dir, batch_id):
+    """orders の行を、Raw に書く。"""
+    return write_raw(records, ORDERS_EVENTS, ingest_date, raw_dir, batch_id)
 
 
 def make_many_records(n: int = 200) -> pd.DataFrame:
@@ -64,9 +88,9 @@ def test_source_round_trip_keeps_values_and_types(tmp_path):
 
     # 10-02 に届いたファイルを、取り込みと同じ手順で読む
     path = tmp_path / "source" / "arrival_date=2017-10-02" / "orders_events_20171002.jsonl"
-    raw = read_source_events(path, log, "2017-10-02")
-    good, bad = validate_events(raw, log, "2017-10-02")
-    result = convert_event_types(good).reset_index(drop=True)
+    raw = read_source_orders(path, log, "2017-10-02")
+    good, bad = validate_orders(raw, log, "2017-10-02")
+    result = convert_orders(good).reset_index(drop=True)
 
     # 隔離はなく、元の 10-02 の出来事と同じ値になる(順位は int32 にそろえて比べる)
     assert bad.empty
@@ -86,8 +110,8 @@ def test_write_source_events_writes_empty_file_for_quiet_day(tmp_path):
     # テスト用のデータでは、10-07 と 10-08 に出来事がない
     path = tmp_path / "source" / "arrival_date=2017-10-07" / "orders_events_20171007.jsonl"
     assert path.exists() and path.stat().st_size == 0
-    raw = read_source_events(path, log, "2017-10-07")
-    good, bad = validate_events(raw, log, "2017-10-07")
+    raw = read_source_orders(path, log, "2017-10-07")
+    good, bad = validate_orders(raw, log, "2017-10-07")
     assert good.empty and bad.empty
 
 
@@ -95,7 +119,7 @@ def test_missing_source_file_stops(tmp_path):
     """届いたファイルがない日は、止める(届いていないことを見逃さない)。"""
     log = RunLog(tmp_path / "logs", "orders_events", "batch1")
     with pytest.raises(IngestStop, match="SOURCE_NOT_FOUND"):
-        read_source_events(tmp_path / "nothing.jsonl", log, "2017-10-02")
+        read_source_orders(tmp_path / "nothing.jsonl", log, "2017-10-02")
 
 
 def test_validate_events_quarantines_bad_rows(tmp_path):
@@ -122,7 +146,7 @@ def test_validate_events_quarantines_bad_rows(tmp_path):
     raw = pd.DataFrame(rows)
 
     # 上限を 1(全部隔離しても止めない)にして、隔離の中身だけを確かめる
-    good, bad = validate_events(raw, log, "2017-10-02", quarantine_limit=1.0)
+    good, bad = validate_orders(raw, log, "2017-10-02", quarantine_limit=1.0)
 
     assert list(good["order_id"]) == ["o1"]
     reasons = dict(zip(bad["order_id"], bad["_error_codes"]))
@@ -151,7 +175,7 @@ def test_validate_events_stops_when_too_many_bad_rows(tmp_path):
         ]
     )
     with pytest.raises(IngestStop, match="QUARANTINE_OVER_LIMIT"):
-        validate_events(raw, log, "2017-10-02")
+        validate_orders(raw, log, "2017-10-02")
 
 
 def test_write_events_makes_expected_file(tmp_path):
@@ -160,7 +184,7 @@ def test_write_events_makes_expected_file(tmp_path):
     # 10-02 に起きた出来事だけを書く
     day_records = records[records["event_date"] == pd.Timestamp("2017-10-02")]
 
-    out_path = write_events(day_records, "2017-10-02", tmp_path, "batch1")
+    out_path = write_orders(day_records, "2017-10-02", tmp_path, "batch1")
 
     # 置き場所は、イベント用のフォルダの下の ingest_date=日付
     expected = tmp_path / "olist" / "orders_events" / "ingest_date=2017-10-02"
@@ -199,11 +223,11 @@ def test_validate_events_checks_rank_flag_and_empty_rank(tmp_path):
     ]
     raw = pd.DataFrame(rows)
 
-    good, bad = validate_events(raw, log, "2017-10-04", quarantine_limit=1.0)
+    good, bad = validate_orders(raw, log, "2017-10-04", quarantine_limit=1.0)
 
     # 良い行は o1 だけで、型の変換も通る
     assert list(good["order_id"]) == ["o1"]
-    assert convert_event_types(good)["event_rank"].dtype == "int32"
+    assert convert_orders(good)["event_rank"].dtype == "Int32"
     reasons = dict(zip(bad["order_id"], bad["_error_codes"]))
     assert reasons["o2"] == "INVALID_EVENT_RANK"
     assert reasons["o3"] == "INVALID_FLAG"
@@ -230,10 +254,10 @@ def test_empty_day_has_same_raw_types_as_normal_day(tmp_path):
     records = build_event_records(make_orders())
     normal = records[records["event_date"] == pd.Timestamp("2017-10-02")]
     # 0 行の表(取り込みで、空のファイルを読んだときと同じ形)
-    empty = convert_event_types(pd.DataFrame(columns=EVENT_COLUMNS))
+    empty = convert_orders(pd.DataFrame(columns=EVENT_COLUMNS))
 
-    normal_path = write_events(normal, "2017-10-02", tmp_path, "batch1")
-    empty_path = write_events(empty, "2017-10-07", tmp_path, "batch1")
+    normal_path = write_orders(normal, "2017-10-02", tmp_path, "batch1")
+    empty_path = write_orders(empty, "2017-10-07", tmp_path, "batch1")
 
     # 2つのファイルの列と型が、完全に同じ
     assert pq.read_schema(empty_path).equals(pq.read_schema(normal_path))

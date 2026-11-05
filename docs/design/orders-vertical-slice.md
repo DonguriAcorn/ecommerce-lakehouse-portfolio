@@ -32,7 +32,7 @@
 - 場所: `s3://ecom-lakehouse-dev-<アカウント ID>/raw/olist/orders_events/ingest_date=YYYY-MM-DD/orders_events_YYYYMMDD.parquet`
 - 形式は Parquet で、1日1ファイル。`ingest_date` は取り込んだ日で、届いた日(`arrival_date`)と同じ。
 - ローカルの `data/raw/` に S3 と同じ形で書き、`aws s3 sync` で上げる(ingest ロール。Raw の読み書きだけができる)。
-- 列は、届くファイルの9列(型を付ける)+ 監査カラム3つ。型は `ingestion/raw_writer.py` の `RAW_SCHEMA` で明示して書く(出来事のない日の 0 行のファイルも、ほかの日と同じ型になる)。
+- 列は、届くファイルの9列(型を付ける)+ 監査カラム3つ。型は `ingestion/schema.py` の registry(`ORDERS_EVENTS`)に書き、`ingestion/raw_writer.py` の `raw_schema` が Parquet の型にして明示する(出来事のない日の 0 行のファイルも、ほかの日と同じ型になる)。受付の流れは全表で共通(replay-tables.md)。
 
 | 列 | 型 | 中身 |
 |---|---|---|

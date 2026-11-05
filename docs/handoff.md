@@ -160,9 +160,9 @@ Lv2 のイメージ:
 metrics:
   - name: gmv
     label: 総流通額
-    description: 支払済みの注文金額の合計(キャンセル除く)
-    table: gold.fact_orders
-    expression: SUM(payment_value)
+    description: 注文明細の商品代金と送料の合計(キャンセル除く。payments は使わない)
+    table: gold.fact_order_items
+    expression: SUM(price + freight_value)
     filter: order_status != 'canceled'
     time_dimension: order_date
 ```

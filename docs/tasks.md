@@ -15,8 +15,8 @@
 
 ## 現在の状態
 
-- 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。2c で、dbt の Silver `ecom_dev_silver.orders_from_events` を作った(3日分 1,308 行、dbt tests 7本 PASS、比較用コピー baseline との差分は業務の8列で双方向 0 件)。確認後に baseline は DROP した。dbt-athena が古い版を整理するため、transform ロールに Glue の `GetTableVersions` / `DeleteTableVersion` を足した(plan は 0 追加・1 変更・0 削除)。2d で、全期間を Raw に上げ(775 ファイル、394,713 行)、Silver を全期間で作った(99,441 行)。元の CSV と注文ごとに突き合わせて、業務の 8 列で差分 0。同じ日と古い日の再実行でも、Silver の指紋は同じ(冪等)。3 で、遅れて届く出来事(5%、3 日遅れ)を別の Raw / Bronze / Silver に流し、遅延なしの Silver と業務の 8 列で差分 0、再実行でも同じ(冪等)を確かめた。dbt は `--vars` の `table_suffix: _late` で、読む Bronze と書く Silver を同時に切り替える。これで orders の縦の1本(フェーズ2の前半)は完成。確認用の遅延ありデータ(Silver / Bronze / S3 / ローカル)は 2026-11-04 に消した。リプレイの共通化は、計画を plan-critic で計6回レビューし、承認済み(2026-11-05)。
-- 次の1手: リプレイの共通化のステップ 1a(測定だけ。明細 price + freight と支払いの金額の差、英訳のないカテゴリの件数)。説明は済んでいるので、OK をもらってから測る。差が大きければ、payments を外す判断を見直す。注意: terraform は `AWS_PROFILE` を外した管理者の認証で打つ(transform ロールのままだと状態ファイルのロックで 403 になる)。S3 の削除は guard-bash が止めるので、ユーザーがターミナルで打つ。 simulator と ingestion は、プロジェクト直下で `uv run python -m simulator.make_source_events` / `-m ingestion.run_ingest` と実行する(`python simulator/...` は import で失敗する)。full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET=...` が要る。このセッションの許可(Claude が dbt を実行してよい)は、次のセッションには引き継がない。
+- 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。2c で、dbt の Silver `ecom_dev_silver.orders_from_events` を作った(3日分 1,308 行、dbt tests 7本 PASS、比較用コピー baseline との差分は業務の8列で双方向 0 件)。確認後に baseline は DROP した。dbt-athena が古い版を整理するため、transform ロールに Glue の `GetTableVersions` / `DeleteTableVersion` を足した(plan は 0 追加・1 変更・0 削除)。2d で、全期間を Raw に上げ(775 ファイル、394,713 行)、Silver を全期間で作った(99,441 行)。元の CSV と注文ごとに突き合わせて、業務の 8 列で差分 0。同じ日と古い日の再実行でも、Silver の指紋は同じ(冪等)。3 で、遅れて届く出来事(5%、3 日遅れ)を別の Raw / Bronze / Silver に流し、遅延なしの Silver と業務の 8 列で差分 0、再実行でも同じ(冪等)を確かめた。dbt は `--vars` の `table_suffix: _late` で、読む Bronze と書く Silver を同時に切り替える。これで orders の縦の1本(フェーズ2の前半)は完成。確認用の遅延ありデータ(Silver / Bronze / S3 / ローカル)は 2026-11-04 に消した。リプレイの共通化は、計画を plan-critic で計6回レビューし、承認済み(2026-11-05)。同じ日に 1a〜5 を進めた。payments は外し、売上は price + freight、カテゴリ名は英訳 → 元の名前 → `unknown` に決めた(カテゴリが空は売上の約 1.3%)。reviews は客が答えた日に届く形に変え、reviews だけ期間を 2018-10-29 まで延ばした(ADR 0011、replay-tables.md)。コードは registry(ingestion/schema.py、7表)と共通の受付(ingest_table.py。orders だけの検証は orders_checks.py)に作り直し、ingest_events.py は消した。pytest 36 本、ruff 0 件。ローカルで6表の Raw を作った(隔離 0 行、金額の合計は CSV と 1 セントまで一致、再実行で差分 0)。orders の Raw は新しいコードで作り直しても全 775 ファイルで差分 0(Bronze / Silver に影響なし)。ログの段階の名前は LOAD / VALIDATE / RUN / WRITE に変え、1日ごとの結果(DAY_RESULT)を足した。
+- 次の1手: リプレイの共通化のステップ 6。ローカルの6表(order_items、reviews、customers、sellers、products、product_category_name_translation)の Raw を、S3 の `raw/olist/<表>/` へ `aws s3 sync` で上げる(ingest ロール。ユーザーがターミナルで打つ。先に `--dryrun`、`--delete` は付けない)。orders の S3 は触らない。済んだら、このタスクを `[x]` にする。注意: terraform は `AWS_PROFILE` を外した管理者の認証で打つ(transform ロールのままだと状態ファイルのロックで 403 になる)。S3 の削除は guard-bash が止めるので、ユーザーがターミナルで打つ。 simulator と ingestion は、プロジェクト直下で `uv run python -m simulator.make_source_events` / `-m ingestion.run_ingest` と実行する(`python simulator/...` は import で失敗する)。full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET=...` が要る。このセッションの許可(Claude が dbt を実行してよい)は、次のセッションには引き継がない。
 
 ## 未決(着手の前に決める)
 
@@ -25,7 +25,7 @@
 - test / prod に流すデータの日数(フェーズ4)
 - 公開アプリのホスティング先と、export の置き場所(フェーズ5)
 - handoff §5 の API 取り込み(為替)を入れるか、`[~]` にするか
-- reviews / sellers / geolocation / 為替を、Gold と画面に入れるか(フェーズ3の「Gold の設計」で、画面の案から決める)
+- 為替を、Gold と画面に入れるか(フェーズ3の「Gold の設計」で、画面の案から決める。reviews と sellers は使い、geolocation は使わないと 2026-11-05 に決めた)
 
 ## フェーズ1: 基盤
 
@@ -92,11 +92,12 @@
   - 完了: 比較の SQL で差分が 0
 - [ ] リプレイを、どのテーブルにも使える形にする(Python。simulator と ingestion の両方。テーブルごとの日付の規則を持つ。イベント型にするかスナップショット型にするかを、テーブルごとに決める。pytest 付き)〔必須〕(案: 他のテーブルも `raw/olist/<テーブル>/` に置き、simulator → ingestion を通す。日付で動かないマスタは、最初の日に1回だけ届く形も選択肢) ← 今ここ
   - 計画(2026-11-05 承認。plan-critic 計6回): 実務に近い BI から逆算し、担当者を事業責任者・営業(出品者の管理)・物流 CS の3人にした。使うのは orders、order_items、reviews、customers、sellers、products、translation の7つ。payments と geolocation は使わない(要るときは registry に1行足す)。
-  - 届く日: order_items は親の注文の購入日、reviews は max(作成日, 購入日)、customers・sellers・products・translation は 2016-09-04 に全件1回。追記型は空の日も空ファイル。registry に expected(table, date)、型、PII の候補の印を持つ。ログは健康状態ページ用の項目を全テーブル共通で書く。元 CSV との行数照合はしない。
+  - 届く日: order_items は親の注文の購入日、reviews は max(客が答えた日, 購入日)(2026-11-05 に変更。reviews だけ期間の最後は 2018-10-29)、customers・sellers・products・translation は 2016-09-04 に全件1回。追記型は空の日も空ファイル。registry に expected(table, date)、型、PII の候補の印を持つ。ログは健康状態ページ用の項目を全テーブル共通で書く。元 CSV との行数照合はしない。
   - 進め方: 1a 測定 → 1b 文書の差分(handoff §9 の売上を price + freight に → tasks.md → CLAUDE.md)→ 1c ADR 0011 と設計書 → 2 registry と order_items → 3 reviews → 4 sellers → 5 customers・products・translation → 6 S3 へ sync と orders の不変の確認
+  - 進み具合(2026-11-05): 1a〜5 済み(ローカルの Raw まで)。残りは 6
 - [ ] 監査カラム(`_ingested_at`、`_source_file`、`_batch_id`)を、Raw と Silver の全テーブルに〔推奨〕(リプレイの共通化の後に行う。orders の Silver には `_source_file` が足りない)
 - [ ] 全テーブルの Bronze(Terraform)と Silver(dbt)〔必須〕
-  - 対象: orders、order_items、payments、reviews、customers、sellers、products、product_category_name_translation、geolocation
+  - 対象: orders、order_items、reviews、customers、sellers、products、product_category_name_translation の7つ(payments と geolocation は使わない。2026-11-05)
   - 完了: 全テーブルが Bronze と Silver にある。件数は、キーの種類の数で照合する
 - [ ] Airflow の土台(ローカルの Docker Compose、1日分の DAG、冪等)〔必須〕
 - [ ] Airflow の運用(リトライ、失敗の通知、dbt の失敗を logs/ に残す、Iceberg の OPTIMIZE / VACUUM)〔必須〕
@@ -111,7 +112,7 @@
 
 - [ ] dbt の meta / tags(owner、pii、update_frequency)〔推奨〕(PII のハッシュ化より先に。どの列が PII かを決めるため)
 - [ ] セマンティックレイヤー Lv1(dbt の YAML に、テーブルとカラムの説明)〔必須〕
-- [ ] Gold の設計: 最終の画面から逆算して、各データソースの出力先を決める〔追加〕(Gold のスター型より先。ダッシュボードの画面ごとに、必要な元データと列を書き出し、reviews / sellers / geolocation / 為替を入れるかを決める。結果は docs/design に残し、判断は ADR にする)
+- [ ] Gold の設計: 最終の画面から逆算して、各データソースの出力先を決める〔追加〕(Gold のスター型より先。ダッシュボードの画面ごとに、必要な元データと列を書き出し、為替を入れるかを決める。結果は docs/design に残し、判断は ADR にする)
 - [ ] Gold のスター型(fact_orders、dim_customer、dim_product、dim_date)〔必須〕(上の設計で決めた列で作る)
 - [ ] SCD Type 2〔必須〕(dim_customer。材料は customers のリプレイ)
 - [ ] dbt tests〔必須〕
@@ -202,9 +203,9 @@
 
 - dbt への移行: 「古い日付では上書きしない」条件の再現。`profiles.yml` は `env_var` を使い、アカウント ID を書かない。`s3_data_dir` / `s3_data_naming` / `on_schema_change` を決める。transform ロールの権限(dbt の一時テーブル)。実行はローカルの uv で `AWS_PROFILE=ecom-dev-transform`。check_orders_rerun.sql は、dbt の test か analyses へ移す。
 - テーブルの型と主キー:
-  - 明細の型(orders の日付に従う): order_items `(order_id, order_item_id)`、payments `(order_id, payment_sequential)`、customers `customer_id`
+  - 明細の型(orders の日付に従う): order_items `(order_id, order_item_id)`、customers `customer_id`
   - 独自の日付: reviews `(review_id, order_id)`(review_id に重複があり、コメントに改行を含む)
-  - マスタの型(日付なし): sellers、products、product_category_name_translation、geolocation(約 100 万行で主キーなし。郵便番号ごとに1行へまとめるかなど、重複の扱いを設計する)
+  - マスタの型(日付なし): sellers、products、product_category_name_translation
   - customer_unique_id ごとに住所が変わったものが 252 件ある(SCD2 の材料)
 - Airflow: dbt は Airflow と別の venv で動かす。`_batch_id` に Airflow の run_id を渡す。メモリは約 4GB が必要。通知先はシークレットとして扱う。dbt の失敗は、`run_results.json` の要点を logs/ に書く(そのときに、transform ロールへ logs/ の書き込みを足す)。
 - CI 専用のロール: `ecom_ci_*` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は読むだけ。
@@ -213,7 +214,7 @@
 - AI エージェント(2026-11-03、plan-critic 2回。3回目は未実施): 運用②の評価データ(合成ログかマスク済みの実ログか。保存前にマスクを通す)/ 実 LLM の評価をどこで回すか(手元か main の週次 CI。作者のキーを GitHub に置かない)/ マスクは AWS 由来の文字列だけにかけ、切り詰めの前に適用する(アナリストの数字は壊さない)/ ops-reader は読むプレフィックスを列挙し、Athena の専用 workgroup に合計スキャン上限を付ける / 出力に外部 URL を描画しない。reviews の本文は AI から見える列に入れない / 録画した応答の CI は「ハーネスの回帰テスト」と呼ぶ / 1質問あたりの最大ステップ数・トークン・1日の上限と、月の LLM 予算 / ADR 候補: 運用エージェントの③を実装しない理由
 - 質問ログ: handoff §10 の「Iceberg に貯める」は、§4 の「公開アプリに AWS の認証情報を持たせない」と両立しない。
 - plan-critic の指摘(フェーズ2の計画を決めるとき、正式に3回のレビューを通す):
-  - 完了の基準をテーブルの型ごとに分ける(明細型は3日の再実行で差分0、マスタ型は全件を入れ直して同じ結果、geolocation は重複の方針を先に決める)
+  - 完了の基準をテーブルの型ごとに分ける(明細型は3日の再実行で差分0、マスタ型は全件を入れ直して同じ結果)
   - Silver の主キーの unique / not_null は、フェーズ2の「全テーブルの Silver」の完了に含める(relationships はフェーズ3)
   - orders の `_source_file` は、dbt への移行(別名のテーブルに作って比べる)と1回にまとめる。NULL のまま許容するかを決める
   - バックフィルは `max_active_runs=1` で、テーブルごとに直列に流す(Iceberg の同時コミットの衝突を避ける)。日次とまとめての結果の一致を確かめる

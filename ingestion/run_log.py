@@ -69,3 +69,33 @@ class RunLog:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
         # 同じ内容を画面にも出す(実行中に様子が分かるように)
         print(message)
+
+    def day_result(
+        self,
+        ingest_date: str,
+        status: str,
+        rows: int = 0,
+        quarantined: int = 0,
+        unexpected_files: int = 0,
+    ) -> None:
+        """1日分の結果を、全表で同じ項目の1行で書く(パイプラインの健康状態ページの元)。
+
+        status: OK(書いた)、SKIPPED_NOT_EXPECTED(届かない日)、または止まった理由の code。
+        画面には出さない(届かない日が何百日も並ぶため)。
+        """
+        record = {
+            "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "level": "INFO" if status in ("OK", "SKIPPED_NOT_EXPECTED") else "ERROR",
+            "batch_id": self.batch_id,
+            "table": self.table,
+            "stage": "DAY",
+            "code": "DAY_RESULT",
+            "ingest_date": ingest_date,
+            "status": status,
+            "rows": rows,  # Raw に書いた行数
+            "quarantined": quarantined,  # 隔離した行数
+            "unexpected_files": unexpected_files,  # 届かないはずの日に置かれていたファイルの数
+        }
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")

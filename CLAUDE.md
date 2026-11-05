@@ -49,14 +49,14 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - terraform/modules/lakehouse_env: 環境ごとの定義(s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf、variables.tf)
 - terraform/envs/dev: main.tf(provider、backend、モジュールの呼び出し)。test と prod は、フェーズ4で作る
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
-- simulator: 業務システムの代わり(パイプラインではない)。orders_events.py(CSV → 出来事の表)、make_source_events.py(data/source/ に、届くファイルを1回だけ作る。遅延もここで入れる)
-- ingestion: パイプラインの Python。run_ingest.py(期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、ingest_events.py(読む・検証・型)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログ)、schema.py(届くファイルの列。送る側との約束)
+- simulator: 業務システムの代わり(パイプラインではない)。make_source_events.py(`--table` で表を選び、data/source/<表>/ に届くファイルを1回だけ作る。遅延は orders だけ)、orders_events.py(orders の CSV → 出来事の表)、table_sources.py(ほかの6表の CSV → 届く日を付けた表)
+- ingestion: パイプラインの Python。run_ingest.py(`--table` と期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、schema.py(registry。7表の列と型・種類・期間。送る側との約束)、ingest_table.py(全表で共通の、読む・検証・型)、orders_checks.py(orders だけの追加の検証)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログと、1日ごとの結果)
 - dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze)。Silver のモデルは models/silver/ に置く(orders_from_events.sql と .yml がある)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
-- docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、permissions.md、error-handling.md、secrets.md
-- docs/adr: 設計判断の記録(0001〜0010。以降は、判断のたびに足す)
+- docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、replay-tables.md(7表のリプレイの仕様)、permissions.md、error-handling.md、secrets.md
+- docs/adr: 設計判断の記録(0001〜0011。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
-- tests: pytest のテスト(test_orders_events.py と test_source_events.py の 19 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
+- tests: pytest のテスト(test_orders_events.py、test_source_events.py、test_tables.py の 36 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
 - airflow、app、semantic: これから使う
 
 ## 決めたこと(要点)
@@ -75,6 +75,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - モジュール化と OIDC(2026-11-03): モジュールの入力は `env` と `admin_user_name`。アカウントに1つしか持てないもの(OIDC プロバイダ、Budgets)は global に置く。リソースの移動は `moved` で行い、plan を保存して削除 0 件を確かめてから apply する。理由は docs/adr を参照。
 - AI エージェント(2026-11-03): 分析エージェント(複数ステップ+pptx)はフェーズ6、運用エージェント(質問応答と診断。読み取り専用、ローカルのみ)は新設のフェーズ9。自動修正の PR は実装しない。どちらも先に設計ステップを置く。細かい仕様は、該当のステップで決める。詳細は handoff §10 と tasks.md を参照。
 - Silver の orders(2026-11-03): 名前は `orders_from_events`。dbt の incremental + merge で、窓(`--vars` の start_date / end_date。既定値なし)に届いた注文の全出来事を畳む。`{{ }}` の中に `--` のコメントを書かない(Jinja なので構文エラー)。transform ロールに Glue の版の権限を足した(permissions.md を更新)。
+- 使うデータ(2026-11-05): orders、order_items、reviews、customers、sellers、products、translation の7つ。payments と geolocation は使わない。売上は明細の `price + freight_value` で数える(handoff §9)。カテゴリ名は、英訳 → 元の名前 → `unknown` の順で出す(カテゴリが空の商品は売上の約 1.3%)。理由は ADR 0011(1c で書く)。
 - ruff と pytest(2026-11-03): ruff は E / F / I の3種類、1行 100 文字。pytest は `tests/` だけを見て、`pythonpath` にプロジェクト直下を足す。Claude が書くコードとテストには、何をしているかを日本語のコメントで残す。
 - S3 のバージョニング(2026-11-03): lake バケットで有効。非現行バージョンは 14 日で削除(バケット全体のルール)。Iceberg のスナップショットは「テーブルの履歴」、バージョニングは「ファイルの履歴」で、役割が違う。
 
