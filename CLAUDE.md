@@ -68,7 +68,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Python: uv、Python 3.12(pandas、pyarrow、boto3、pytest、ruff、ipykernel)。
 - スコープ: 必須と推奨の要素は、すべて入れる。対象外は、セマンティックレイヤー Lv3、OpenLineage、IaC のセキュリティスキャン、障害注入、複数ステップ分析、専用のデータカタログ、CloudWatch。
 - orders のパイプライン(2026-11-03): Raw は出来事を1行ずつ並べた形(ADR 0010)。業務システムの代わり(simulator/)が data/source/ に届いた日ごとの JSON Lines を置き、パイプライン(ingestion/)はそれを検証して Raw に積むだけ。期間は 2016-09-04 〜 2018-10-18 の 775 日。Silver は dbt でイベントから「いまの状態」に畳む(作成中)。詳細は docs/design/orders-vertical-slice.md。
-- テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は dbt。理由は ADR 0003 と orders-vertical-slice.md を参照。
+- テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は dbt。理由は ADR 0003 と orders-vertical-slice.md を参照。bronze.tf は、7表を `local.bronze_tables` の一覧から for_each で作る(表を足すときは一覧に1件足す。列名は registry と同じ綴り。説明は日本語)(2026-11-07)。
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
 - Claude Code の構成(2026-11-02): 絶対に止めることは .claude/settings.json の deny と hook(最後の守りは gitleaks)、いつも守ることは CLAUDE.md、ときどきやる手順は .claude/skills、大きな方針のレビューは .claude/agents/plan-critic に置く。あとで入れるものと入れないものは、tasks.md に書いた。
 - シークレット(2026-11-03): 鍵を持たない形(ロールを借りる、OIDC)を第一にする。鍵が要るものは SSM SecureString(`/ecom/<環境>/<用途>`)に置く。詳細は secrets.md を参照。
