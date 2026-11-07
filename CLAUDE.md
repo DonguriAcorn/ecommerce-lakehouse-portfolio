@@ -54,10 +54,11 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze 7表)。Silver のモデルは models/silver/ に置く(orders_from_events と6表。6表は macros/silver_latest.sql を呼ぶ)。2列のキーのテストは tests/generic/unique_combination.sql
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、replay-tables.md(7表のリプレイの仕様)、permissions.md、error-handling.md、secrets.md
-- docs/adr: 設計判断の記録(0001〜0011。以降は、判断のたびに足す)
+- docs/adr: 設計判断の記録(0001〜0012。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
 - tests: pytest のテスト(test_orders_events.py、test_source_events.py、test_tables.py の 36 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
-- airflow、app、semantic: これから使う
+- airflow: Dockerfile(公式 3.3.2 に、uv.lock どおりの venv `/opt/project-venv` を足す)、docker-compose.yaml(LocalExecutor + Postgres の5サービス)、.env(Git の管理外。見本は .env.example)、dags/(ステップ3で作る)。プロジェクト直下の .dockerignore で、ビルドに送るのを pyproject.toml と uv.lock だけにする
+- app、semantic: これから使う
 
 ## 決めたこと(要点)
 - S3: 環境ごとに1バケット(`ecom-lakehouse-<環境>-<アカウント ID>`)。中を raw/、iceberg/、athena-results/ のプレフィックスで分ける。
@@ -81,6 +82,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 
 - 遅延到着の確認(2026-11-04): 本番の Raw と Silver は上書きしない。遅延ありは別の場所(`raw/olist_late/`、Bronze `orders_events_late`、Silver `orders_from_events_late`)に作り、確認が終われば消す。dbt の変数 `table_suffix: _late` が、読む元と書く先を同時に切り替える。`run_ingest.py` は `--source-dir` と `--raw-dir` で場所を指定できる。設計書は orders-vertical-slice.md を参照。
 - 6表の Silver(2026-11-07): Silver は staging 寄りで結合しない(結合は Gold)。共通のマクロ `silver_latest` で、キーごとに最後に届いた1行を merge。reviews はレビュー×注文で1行。パーティションなし。詳細は replay-tables.md の「Silver」。
+- Airflow(2026-11-07): ローカルの Docker Compose で 3.3.2、LocalExecutor + Postgres(同時の書き込みに強いため。SQLite は試し用)。プロジェクトのライブラリは、Airflow 本体とは別の venv(`/opt/project-venv`)に入れ、版のぶつかりを避ける。AWS へは、手元で借りたロールの一時キーだけを読み取り専用で渡す(ADR 0012)。画面は `127.0.0.1:8080` だけで開く。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。届くファイルは data/source/、Raw は data/raw/(どちらも Git の管理外。simulator と run_ingest.py で作り直せる)。

@@ -1,0 +1,132 @@
+# ローカルの Airflow 3.3.2(LocalExecutor + Postgres)。公式の compose から Celery と Redis を抜いた形
+# 秘密の値(パスワードなど)は、同じフォルダの .env(Git の管理外)から読む。見本は .env.example
+# 起動: docker compose -f airflow/docker-compose.yaml up -d --build(プロジェクト直下で)
+
+# 5つのサービスで共通の設定(&airflow-common で名前を付け、下で <<: で使い回す)
+x-airflow-common: &airflow-common
+  # Dockerfile からイメージを作る。送るファイルはプロジェクト直下(..)から .dockerignore で選ぶ
+  build:
+    context: ..
+    dockerfile: airflow/Dockerfile
+  image: ecom-airflow:3.3.2
+  environment: &airflow-common-env
+    # タスクを、スケジューラ自身が並列に動かす
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    # 画面のログインに、ユーザー名とパスワードの方式(FAB)を使う
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    # タイムカード(Postgres)への接続先。パスワードは .env から
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${POSTGRES_PASSWORD:?.env に POSTGRES_PASSWORD がない}@postgres/airflow
+    # 見本の DAG を読み込まない(画面を自分の DAG だけにする)
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    # 新しい DAG は「一時停止」で現れる(置いた瞬間に勝手に動かない)
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    # (公式の写し)Airflow 3 では、タスクは API サーバーを通して状態を報告する。その宛先
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    # (公式の写し)タスクと API サーバーの間の通行証(JWT)の署名鍵。全サービスで同じ値にする
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?.env に AIRFLOW_JWT_SECRET がない}
+    AIRFLOW__API_AUTH__JWT_ISSUER: airflow
+    # (公式の写し)スケジューラの健康チェックを有効にする(下の healthcheck で使う)
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  volumes:
+    # DAG のファイル(手元で書くと、すぐコンテナに見える)
+    - ./dags:/opt/airflow/dags
+    # タスクのログ(Git の管理外。.gitignore の airflow/logs/)
+    - ./logs:/opt/airflow/logs
+  # (公式の写し)コンテナの中の利用者(公式イメージの airflow の番号)
+  user: "50000:0"
+  depends_on: &airflow-common-depends-on
+    # Postgres が受け付けられる状態になってから起動する
+    postgres:
+      condition: service_healthy
+
+services:
+  # タイムカード。データは名前付きのボリュームに残る(コンテナを消しても履歴は残る)
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env に POSTGRES_PASSWORD がない}
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    # 受付できるかを 10 秒ごとに確かめる
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  # 最初に1回だけ動く準備係: DB の表を作り(migrate)、画面の管理者を作る
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs /opt/airflow/dags
+        chown -R "50000:0" /opt/airflow/logs
+        /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      # (公式の写し)公式イメージの入口(/entrypoint)が、この印を見て DB の準備と管理者の作成をする
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?.env に AIRFLOW_ADMIN_PASSWORD がない}
+    # フォルダの持ち主を変えるため、この係だけ root で動く
+    user: "0:0"
+
+  # 画面と API。手元の Mac からだけ開ける(127.0.0.1 に限る)
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # 時計を見て DAG の実行を決め、タスクを動かす係(LocalExecutor なので、実行もここ)
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # dags/ のファイルを読み、DAG の形を DB に登録する係
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+# Postgres のデータを置く、Docker が管理する保存場所
+volumes:
+  postgres-db-volume:

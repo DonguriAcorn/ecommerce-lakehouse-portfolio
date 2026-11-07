@@ -19,7 +19,7 @@
 | AWS のアカウント ID | 今 | ファイルに書かない。Terraform は `aws_caller_identity` で取得する | ― |
 | Budgets の通知先のメール | 今 | `terraform.tfvars`(Git の外)、変数は `sensitive = true` | ― |
 | GitHub Actions から AWS へ | フェーズ4 | OIDC。ロールの ARN は GitHub の Variables に置く | なし |
-| Airflow から AWS へ | フェーズ2 | 未決(管理者の長期の鍵は、コンテナに入れない) | ― |
+| Airflow から AWS へ | フェーズ2 | 手元で ingest / transform ロールを借りた一時キーを、Git の管理外のファイルに書き出し、コンテナに読み取り専用でマウントする(ADR 0012) | なし(一時キーだけ) |
 | Streamlit のアプリの設定、LLM の API キー | フェーズ5〜6 | Streamlit Secrets。作者のキーは回数制限と一緒に使うか、閲覧者が自分のキーを入れる | あり |
 | Snowflake から S3 へ | フェーズ8 | Snowflake 用の IAM ロールの信頼ポリシー(外部 ID 付き) | なし |
 
