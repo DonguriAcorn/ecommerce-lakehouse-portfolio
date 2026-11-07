@@ -1,0 +1,32 @@
+# product_category_name_translation の列の説明と、dbt tests
+version: 2                                  # YAML の書式の版。2 で固定
+
+models:
+  - name: product_category_name_translation # product_category_name_translation.sql のモデルを指す
+    description: "カテゴリ名の英訳(1行 = 1カテゴリ)。英訳がないカテゴリが2つあり、Gold で元の名前を使う。"
+    columns:
+      - name: product_category_name
+        description: "カテゴリ名(ポルトガル語)。主キー(products とつなぐ)"
+        data_tests:
+          - unique
+          - not_null
+      - name: product_category_name_english
+        description: "カテゴリ名の英訳"
+        data_tests:
+          - not_null
+      - name: _last_ingest_date
+        description: "この行が届いた日(マスタなので 2016-09-04)。古い情報で上書きしないガードに使う"
+        data_tests:
+          - not_null
+      - name: _ingested_at
+        description: "監査: この行を Raw に取り込んだ時刻(UTC)"
+        data_tests:
+          - not_null
+      - name: _source_file
+        description: "監査: この行の Raw のファイル名"
+        data_tests:
+          - not_null
+      - name: _batch_id
+        description: "監査: この行を取り込んだ実行の ID"
+        data_tests:
+          - not_null

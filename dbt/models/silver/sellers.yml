@@ -1,0 +1,34 @@
+# sellers の列の説明と、dbt tests
+version: 2                                  # YAML の書式の版。2 で固定
+
+models:
+  - name: sellers                           # sellers.sql のモデルを指す
+    description: "出品者マスタ(1行 = 1出品者)。"
+    columns:
+      - name: seller_id
+        description: "出品者の ID。主キー(order_items とつなぐ)"
+        data_tests:
+          - unique
+          - not_null
+      - name: seller_zip_code_prefix
+        description: "郵便番号の先頭5桁(先頭の 0 を保つため文字列)"
+      - name: seller_city
+        description: "市の名前"
+      - name: seller_state
+        description: "州の略号(例: SP)"
+      - name: _last_ingest_date
+        description: "この行が届いた日(マスタなので 2016-09-04)。古い情報で上書きしないガードに使う"
+        data_tests:
+          - not_null
+      - name: _ingested_at
+        description: "監査: この行を Raw に取り込んだ時刻(UTC)"
+        data_tests:
+          - not_null
+      - name: _source_file
+        description: "監査: この行の Raw のファイル名"
+        data_tests:
+          - not_null
+      - name: _batch_id
+        description: "監査: この行を取り込んだ実行の ID"
+        data_tests:
+          - not_null

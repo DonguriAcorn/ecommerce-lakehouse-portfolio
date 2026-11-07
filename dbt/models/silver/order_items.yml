@@ -1,0 +1,53 @@
+# order_items の列の説明と、dbt tests(dbt test で自動チェックする条件)
+version: 2                                  # YAML の書式の版。2 で固定
+
+models:
+  - name: order_items                       # order_items.sql のモデルを指す
+    description: "注文の明細(1行 = 注文の1明細)。Bronze の明細を、キーごとに最後に届いた1行にして作る。"
+    data_tests:                             # 表全体にかける条件
+      - unique_combination:                 # 自作のテスト(tests/generic/unique_combination.sql)
+          arguments:
+            columns: ["order_id", "order_item_id"]  # この2列の組が重複しない(キーが一意の証拠)
+    columns:
+      - name: order_id
+        description: "注文の ID(orders_from_events とつなぐ)"
+        data_tests:
+          - not_null                        # 空がない
+      - name: order_item_id
+        description: "注文の中の明細の番号(1, 2, ...)"
+        data_tests:
+          - not_null
+      - name: product_id
+        description: "商品の ID(products とつなぐ)"
+        data_tests:
+          - not_null
+      - name: seller_id
+        description: "出品者の ID(sellers とつなぐ)"
+        data_tests:
+          - not_null
+      - name: shipping_limit_date
+        description: "出品者が発送すべき期限"
+      - name: price
+        description: "商品の価格(decimal(10,2))。売上は price + freight_value で数える"
+        data_tests:
+          - not_null
+      - name: freight_value
+        description: "送料(decimal(10,2))"
+        data_tests:
+          - not_null
+      - name: _last_ingest_date
+        description: "この行が届いた日(親の注文の購入日)。古い情報で上書きしないガードに使う"
+        data_tests:
+          - not_null
+      - name: _ingested_at
+        description: "監査: この行を Raw に取り込んだ時刻(UTC)"
+        data_tests:
+          - not_null
+      - name: _source_file
+        description: "監査: この行の Raw のファイル名"
+        data_tests:
+          - not_null
+      - name: _batch_id
+        description: "監査: この行を取り込んだ実行の ID"
+        data_tests:
+          - not_null

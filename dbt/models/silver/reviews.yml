@@ -1,0 +1,55 @@
+# reviews の列の説明と、dbt tests
+version: 2                                  # YAML の書式の版。2 で固定
+
+models:
+  - name: reviews                           # reviews.sql のモデルを指す
+    description: "購入後のレビュー(1行 = 1つのレビューと1つの注文の組)。同じレビューが複数の注文に付くことがあるため、レビュー ID だけでは一意にならない。"
+    data_tests:
+      - unique_combination:                 # 自作のテスト。レビュー ID + 注文 ID の組が重複しない
+          arguments:
+            columns: ["review_id", "order_id"]
+    columns:
+      - name: review_id
+        description: "レビューの ID。同じ値が複数の注文に出ることがある"
+        data_tests:
+          - not_null
+      - name: order_id
+        description: "注文の ID(orders_from_events とつなぐ)"
+        data_tests:
+          - not_null
+      - name: review_score
+        description: "星の数(1〜5)"
+        data_tests:
+          - not_null
+          - accepted_values:                # 決まった値のどれかである
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false                # 数値なので、引用符を付けずに比べる
+      - name: review_comment_title
+        description: "コメントのタイトル。空が多い。個人情報の候補(扱いはフェーズ3で決める)"
+      - name: review_comment_message
+        description: "コメントの本文。改行・引用符・絵文字を含む。個人情報の候補"
+      - name: review_creation_date
+        description: "アンケートを送った日"
+        data_tests:
+          - not_null
+      - name: review_answer_timestamp
+        description: "客が答えた日時"
+        data_tests:
+          - not_null
+      - name: _last_ingest_date
+        description: "この行が届いた日(客が答えた日と購入日の遅いほう)。古い情報で上書きしないガードに使う"
+        data_tests:
+          - not_null
+      - name: _ingested_at
+        description: "監査: この行を Raw に取り込んだ時刻(UTC)"
+        data_tests:
+          - not_null
+      - name: _source_file
+        description: "監査: この行の Raw のファイル名"
+        data_tests:
+          - not_null
+      - name: _batch_id
+        description: "監査: この行を取り込んだ実行の ID"
+        data_tests:
+          - not_null

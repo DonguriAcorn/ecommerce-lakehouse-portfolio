@@ -1,0 +1,44 @@
+# products の列の説明と、dbt tests
+version: 2                                  # YAML の書式の版。2 で固定
+
+models:
+  - name: products                          # products.sql のモデルを指す
+    description: "商品マスタ(1行 = 1商品)。列名の綴りの誤り _lenght は元データのまま。"
+    columns:
+      - name: product_id
+        description: "商品の ID。主キー(order_items とつなぐ)"
+        data_tests:
+          - unique
+          - not_null
+      - name: product_category_name
+        description: "カテゴリ名(ポルトガル語)。空の商品が 610 件ある。英訳は product_category_name_translation とつなぐ"
+      - name: product_name_lenght
+        description: "商品名の文字数"
+      - name: product_description_lenght
+        description: "説明文の文字数"
+      - name: product_photos_qty
+        description: "写真の枚数"
+      - name: product_weight_g
+        description: "重さ(g)"
+      - name: product_length_cm
+        description: "長さ(cm)"
+      - name: product_height_cm
+        description: "高さ(cm)"
+      - name: product_width_cm
+        description: "幅(cm)"
+      - name: _last_ingest_date
+        description: "この行が届いた日(マスタなので 2016-09-04)。古い情報で上書きしないガードに使う"
+        data_tests:
+          - not_null
+      - name: _ingested_at
+        description: "監査: この行を Raw に取り込んだ時刻(UTC)"
+        data_tests:
+          - not_null
+      - name: _source_file
+        description: "監査: この行の Raw のファイル名"
+        data_tests:
+          - not_null
+      - name: _batch_id
+        description: "監査: この行を取り込んだ実行の ID"
+        data_tests:
+          - not_null

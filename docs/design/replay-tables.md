@@ -83,11 +83,20 @@
 - orders の出来事の作り方(`simulator/orders_events.py`)と、orders だけの検証(`event_type`、`event_rank`)。
 - 遅延の再現(`--late-share`、`--late-days`)は orders だけ。子の表に遅延を入れるときは、「子は親と同じ日か後に届く」を守る。
 
+## Silver(2026-11-07)
+
+- Silver は staging 寄り。表ごとに「キーごとに1行」を約束するだけで、結合と業務の計算(売上、カテゴリ名の補い、リピート)は Gold で行う。数がずれたとき、取り込みの問題か結合の問題かを層で切り分けるため。
+- orders 以外の6表は、共通のマクロ `dbt/macros/silver_latest.sql` で作る。窓(`--vars` の start_date / end_date)に届いた行を、キーごとに最後に届いた1行にし、merge する。Silver より新しく届いた行だけで上書きする(同じ窓の再実行は変化 0)。`full_refresh=false`。
+- キー: order_items は `order_id` + `order_item_id`、reviews は `review_id` + `order_id`、マスタは各 ID。2列のキーの一意性は、自作のテスト `unique_combination` で確かめる。
+- reviews の `review_id` の重複 814 件は、同じレビューが複数の注文に付いたもの(789 個の ID が 1,603 行。中身は同じ)。注文とのつながりを残すため、レビュー×注文で1行にする。
+- マスタも同じ merge にする(届くのは初日だけで、ほかの日は変化 0)。Airflow は7表に同じ窓を渡すだけでよい。
+- パーティションは付けない(各表が数 MB で、日付で絞る場面も少ない。大きくなれば Iceberg のパーティションの進化で足せる)。
+
 ## 後のフェーズへの申し送り(方向だけ)
 
 - 売上の定義で、キャンセルと明細のない注文(775 件)をどう扱うかは、セマンティックレイヤー Lv1 で決める。
 - Gold に `fact_order_items`(明細ごと)と `dim_seller` を足す方向。出品者と評価の結び方は、Gold の設計で決める。
-- SCD2: Silver で customers を orders と `customer_id` で結び、購入日時を有効日にして、`customer_unique_id` ごとに作る(住所が変わった人は 252 人)。
+- SCD2: Gold(dim_customer)で、Silver の customers を orders と `customer_id` で結び、購入日時を有効日にして、`customer_unique_id` ごとに作る(住所が変わった人は 252 人)。
 
 ## 完了の条件
 

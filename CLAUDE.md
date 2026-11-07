@@ -51,7 +51,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
 - simulator: 業務システムの代わり(パイプラインではない)。make_source_events.py(`--table` で表を選び、data/source/<表>/ に届くファイルを1回だけ作る。遅延は orders だけ)、orders_events.py(orders の CSV → 出来事の表)、table_sources.py(ほかの6表の CSV → 届く日を付けた表)
 - ingestion: パイプラインの Python。run_ingest.py(`--table` と期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、schema.py(registry。7表の列と型・種類・期間。送る側との約束)、ingest_table.py(全表で共通の、読む・検証・型)、orders_checks.py(orders だけの追加の検証)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログと、1日ごとの結果)
-- dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze)。Silver のモデルは models/silver/ に置く(orders_from_events.sql と .yml がある)
+- dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze 7表)。Silver のモデルは models/silver/ に置く(orders_from_events と6表。6表は macros/silver_latest.sql を呼ぶ)。2列のキーのテストは tests/generic/unique_combination.sql
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、replay-tables.md(7表のリプレイの仕様)、permissions.md、error-handling.md、secrets.md
 - docs/adr: 設計判断の記録(0001〜0011。以降は、判断のたびに足す)
@@ -80,6 +80,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - S3 のバージョニング(2026-11-03): lake バケットで有効。非現行バージョンは 14 日で削除(バケット全体のルール)。Iceberg のスナップショットは「テーブルの履歴」、バージョニングは「ファイルの履歴」で、役割が違う。
 
 - 遅延到着の確認(2026-11-04): 本番の Raw と Silver は上書きしない。遅延ありは別の場所(`raw/olist_late/`、Bronze `orders_events_late`、Silver `orders_from_events_late`)に作り、確認が終われば消す。dbt の変数 `table_suffix: _late` が、読む元と書く先を同時に切り替える。`run_ingest.py` は `--source-dir` と `--raw-dir` で場所を指定できる。設計書は orders-vertical-slice.md を参照。
+- 6表の Silver(2026-11-07): Silver は staging 寄りで結合しない(結合は Gold)。共通のマクロ `silver_latest` で、キーごとに最後に届いた1行を merge。reviews はレビュー×注文で1行。パーティションなし。詳細は replay-tables.md の「Silver」。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。届くファイルは data/source/、Raw は data/raw/(どちらも Git の管理外。simulator と run_ingest.py で作り直せる)。

@@ -11,3 +11,16 @@ sources:
         description: "Olist の注文の出来事(1行 = 1つの出来事。1注文に複数行ある)。ingest_date(文字列)でパーティション分割されている。Silver で、注文ごとの「いまの状態」に畳む"
       - name: orders_events_late            # 遅延ありの確認用(bronze.tf の orders_events_late)。table_suffix: _late のときだけ読む。確認が終わったら消す
         description: "orders_events と同じ列。一部の出来事が3日遅れて届く想定のコピー(確認用)"
+      # ここから下の6表は、Silver で macros/silver_latest.sql を通して「キーごとに1行」にする
+      - name: order_items                   # 追記型。親の注文の購入日に届く
+        description: "Olist の注文の明細(1行 = 注文の1明細)。ingest_date でパーティション分割されている"
+      - name: reviews                       # 追記型。客が答えた日に届く(2018-10-29 まで)
+        description: "Olist のレビュー(1行 = 1件の回答)。同じレビューが複数の注文に付くことがある"
+      - name: customers                     # 一括型(マスタ)。2016-09-04 に全件1回
+        description: "Olist の顧客マスタ(全件を1回だけ届ける)"
+      - name: sellers                       # 一括型(マスタ)
+        description: "Olist の出品者マスタ(全件を1回だけ届ける)"
+      - name: products                      # 一括型(マスタ)
+        description: "Olist の商品マスタ(全件を1回だけ届ける)"
+      - name: product_category_name_translation  # 一括型(マスタ)
+        description: "Olist のカテゴリ名の英訳(全件を1回だけ届ける)"
