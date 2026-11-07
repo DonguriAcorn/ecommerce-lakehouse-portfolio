@@ -16,3 +16,4 @@ models:
       +table_type: iceberg              # Silver と同じ Iceberg 形式
       +format: parquet                  # ファイル形式
       +write_compression: zstd          # 圧縮方式。既存の Silver と同じ
+      +on_schema_change: append_new_columns  # モデルに列が増えたら、すでにあるテーブルにも列を足す(消すことはしない)

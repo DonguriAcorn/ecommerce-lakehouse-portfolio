@@ -78,6 +78,8 @@
 
 - 畳み方: 窓(`start_date` 〜 `end_date`)に現れた注文について、その注文の全イベント(`ingest_date <= end_date`。開始日の制限なし)を読む。状態は `event_rank` の大きい順(同じなら `event_time` の新しい順)で最新の出来事から取る。承認日時などは、`event_type` ごとの `event_time` を取り出して1行にする。
 - 古い情報で上書きしない: その注文のイベントの `ingest_date` の最大を `_last_ingest_date` として持ち、Silver の値より新しいときだけ MERGE に通す。同じ日の再実行は変化 0。
+- 監査カラム(2026-11-07): `_ingested_at`、`_source_file`、`_batch_id` は、最後に届いた出来事(`ingest_date` が最大の行)の値を `max_by` で持つ。「この行を最後に変えたファイルと実行」が分かる。同じ届いた日の出来事は同じファイルから来るので、値は1つに決まる。
+- あとから列を足すとき: silver に `on_schema_change: append_new_columns` を入れた(列を足すだけで、消さない)。dbt は、モデルの SELECT を流したあとに列を足す。そのため、ガードの条件に新しい列(例: `t._source_file is null`)を書くと、まだない列を参照するエラーになる。既存の行を埋めるときは、一時的に `>` を `>=` にして全期間の窓で1回流し、すぐに戻す。
 - 同じ日の訂正: 上のガードで入らないので、Silver を全期間の窓で作り直して対応する。
 - 作り直しの事故を防ぐ: モデルに `full_refresh=false` を入れる(狭い窓で作り直すと、その窓の分だけになるため)。
 - 定義を Terraform にしない理由: Iceberg は更新のたびに Glue の `metadata_location` が書き換わり、Terraform で管理すると設計図とのずれになるため。中身が動かないもの(バケット、DB、workgroup、IAM、Bronze)は Terraform、Iceberg のテーブルは dbt。

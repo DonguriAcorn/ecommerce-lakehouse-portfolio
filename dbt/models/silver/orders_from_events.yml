@@ -45,3 +45,15 @@ models:
         description: "この注文の出来事が最後に届いた日。古い情報で上書きしないガードに使う"
         data_tests:
           - not_null
+      - name: _ingested_at
+        description: "監査: 最後に届いた出来事を Raw に取り込んだ時刻(UTC)"
+        data_tests:
+          - not_null                        # 全行で値がある(埋め残しがない証拠)
+      - name: _source_file
+        description: "監査: 最後に届いた出来事の Raw のファイル名"
+        data_tests:
+          - not_null
+      - name: _batch_id
+        description: "監査: 最後に届いた出来事を取り込んだ実行の ID"
+        data_tests:
+          - not_null

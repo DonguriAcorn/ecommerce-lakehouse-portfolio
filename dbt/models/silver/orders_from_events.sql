@@ -64,7 +64,13 @@ folded as (
         max(event_time) filter (where event_type = 'delivered') as order_delivered_customer_date,
         max(order_estimated_delivery_date) as order_estimated_delivery_date,
         -- その注文の出来事が最後に届いた日。古い情報で上書きしないためのガードに使う
-        cast(max(ingest_date) as date) as _last_ingest_date
+        cast(max(ingest_date) as date) as _last_ingest_date,
+        -- 監査カラム: 最後に届いた出来事(ingest_date が最大の行)の値を残す
+        -- 「この行を最後に変えたのは、どのファイル・どの実行か」が分かる
+        -- 同じ届いた日の出来事は同じファイルから来るので、どの行を選んでも値は同じ
+        max_by(_ingested_at, ingest_date) as _ingested_at,
+        max_by(_source_file, ingest_date) as _source_file,
+        max_by(_batch_id, ingest_date) as _batch_id
     from ranked
     group by order_id
 )
