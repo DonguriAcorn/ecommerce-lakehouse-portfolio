@@ -33,6 +33,8 @@ x-airflow-common: &airflow-common
     AWS_DEFAULT_REGION: ap-northeast-1
     # キーがないとき、EC2 の情報サービスを探しに行って長く待つのを防ぐ(すぐ失敗させる)
     AWS_EC2_METADATA_DISABLED: "true"
+    # 上げ先のバケット名(アカウント ID を含むので .env から読む)。upload_raw と dbt が使う
+    LAKE_BUCKET: ${LAKE_BUCKET:?.env に LAKE_BUCKET がない}
   volumes:
     # DAG のファイル(手元で書くと、すぐコンテナに見える)
     - ./dags:/opt/airflow/dags
@@ -41,6 +43,12 @@ x-airflow-common: &airflow-common
     # 一時キーのフォルダを、読み取り専用(:ro)で見せる。ファイル単位でなくフォルダ単位にするのは、
     # スクリプトがファイルを差し替えても、コンテナが新しいほうを見られるようにするため
     - ${HOME}/.ecom-airflow:/opt/airflow/aws:ro
+    # パイプラインのコード(手元で直すと、すぐコンテナに見える)
+    - ../ingestion:/opt/project/ingestion
+    # dbt のプロジェクト(実行すると target/ と logs/ が書かれるので、書き込み可)
+    - ../dbt:/opt/project/dbt
+    # 届いたファイル、Raw、ログ、隔離(取り込みが書くので、書き込み可。Git の管理外)
+    - ../data:/opt/project/data
   # (公式の写し)コンテナの中の利用者(公式イメージの airflow の番号)
   user: "50000:0"
   depends_on: &airflow-common-depends-on
