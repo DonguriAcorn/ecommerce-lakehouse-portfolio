@@ -57,7 +57,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - docs/adr: 設計判断の記録(0001〜0012。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
 - tests: pytest のテスト(test_orders_events.py、test_source_events.py、test_tables.py の 36 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
-- airflow: Dockerfile(公式 3.3.2 に、uv.lock どおりの venv `/opt/project-venv` を足す)、docker-compose.yaml(LocalExecutor + Postgres の5サービス)、.env(Git の管理外。見本は .env.example)、dags/(ステップ3で作る)。プロジェクト直下の .dockerignore で、ビルドに送るのを pyproject.toml と uv.lock だけにする
+- airflow: Dockerfile(公式 3.3.2 に、uv.lock どおりの venv `/opt/project-venv` を足す)、docker-compose.yaml(LocalExecutor + Postgres の5サービス)、.env(Git の管理外。見本は .env.example)、refresh_credentials.sh(ingest / transform の一時キーを `~/.ecom-airflow/credentials` に書き出す。Airflow を使う前に毎回打つ。期限は1時間)、dags/(ステップ3で作る)。compose は、`~/.ecom-airflow` をフォルダごと読み取り専用でコンテナの `/opt/airflow/aws` に見せる。プロジェクト直下の .dockerignore で、ビルドに送るのを pyproject.toml と uv.lock だけにする
 - app、semantic: これから使う
 
 ## 決めたこと(要点)

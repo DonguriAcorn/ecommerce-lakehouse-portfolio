@@ -27,11 +27,20 @@ x-airflow-common: &airflow-common
     AIRFLOW__API_AUTH__JWT_ISSUER: airflow
     # (公式の写し)スケジューラの健康チェックを有効にする(下の healthcheck で使う)
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # AWS の一時キーのファイル(手元の ~/.ecom-airflow を、下の volumes で見せる。ADR 0012)
+    AWS_SHARED_CREDENTIALS_FILE: /opt/airflow/aws/credentials
+    # リージョンは東京(credentials ファイルにはリージョンを書かないため)
+    AWS_DEFAULT_REGION: ap-northeast-1
+    # キーがないとき、EC2 の情報サービスを探しに行って長く待つのを防ぐ(すぐ失敗させる)
+    AWS_EC2_METADATA_DISABLED: "true"
   volumes:
     # DAG のファイル(手元で書くと、すぐコンテナに見える)
     - ./dags:/opt/airflow/dags
     # タスクのログ(Git の管理外。.gitignore の airflow/logs/)
     - ./logs:/opt/airflow/logs
+    # 一時キーのフォルダを、読み取り専用(:ro)で見せる。ファイル単位でなくフォルダ単位にするのは、
+    # スクリプトがファイルを差し替えても、コンテナが新しいほうを見られるようにするため
+    - ${HOME}/.ecom-airflow:/opt/airflow/aws:ro
   # (公式の写し)コンテナの中の利用者(公式イメージの airflow の番号)
   user: "50000:0"
   depends_on: &airflow-common-depends-on
