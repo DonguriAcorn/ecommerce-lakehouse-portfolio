@@ -4,7 +4,7 @@
 今日の日付に合わせたスケジュールは組まない(schedule=None)。
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # タスクの部品(シェルのコマンドを1つ実行する)と、DAG、画面の入力欄
 from airflow.providers.standard.operators.bash import BashOperator
@@ -41,6 +41,11 @@ with DAG(
         "target_date": Param("2016-09-04", type="string", pattern=r"^\d{4}-\d{2}-\d{2}$"),
     },
     tags=["olist"],
+    # 全タスク共通の既定値。失敗したら5分待って、最大2回やり直す(最初の実行を入れて最大3回)
+    default_args={
+        "retries": 2,  # やり直す回数
+        "retry_delay": timedelta(minutes=5),  # やり直すまでの待ち時間
+    },
 ) as dag:
     # 7表の取り込み。互いに関係がないので同時に流す。ローカルの data/ を読み書きするだけで、
     # AWS には触れないので、ロールの指定は要らない
@@ -75,9 +80,12 @@ with DAG(
     )
 
     # テストを流す(同じ窓)
+    # retries=0: 不合格はやり直しても直らないので、すぐ失敗として確定させる
+    # (タスクに書いた値が、default_args より優先される)
     dbt_test = BashOperator(
         task_id="dbt_test",
         bash_command=f"cd {PROJECT} && {DBT} test {DBT_ARGS}",
+        retries=0,
     )
 
     # 順番: 7表の取り込み(同時)→ S3 へ → dbt run → dbt test
