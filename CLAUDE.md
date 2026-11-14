@@ -50,13 +50,13 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - terraform/envs/dev: main.tf(provider、backend、モジュールの呼び出し)。test と prod は、フェーズ4で作る
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
 - simulator: 業務システムの代わり(パイプラインではない)。make_source_events.py(`--table` で表を選び、data/source/<表>/ に届くファイルを1回だけ作る。遅延は orders だけ)、orders_events.py(orders の CSV → 出来事の表)、table_sources.py(ほかの6表の CSV → 届く日を付けた表)
-- ingestion: パイプラインの Python。run_ingest.py(`--table` と期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、schema.py(registry。7表の列と型・種類・期間。送る側との約束)、ingest_table.py(全表で共通の、読む・検証・型)、orders_checks.py(orders だけの追加の検証)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログと、1日ごとの結果)、upload_raw.py(その日の Raw を boto3 で S3 へ上げる。Airflow のコンテナには aws CLI がない)
+- ingestion: パイプラインの Python。run_ingest.py(`--table` と期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、schema.py(registry。7表の列と型・種類・期間。送る側との約束)、ingest_table.py(全表で共通の、読む・検証・型)、orders_checks.py(orders だけの追加の検証)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログと、1日ごとの結果)、upload_raw.py(その日の Raw を boto3 で S3 へ上げる。Airflow のコンテナには aws CLI がない)、dbt_failures.py(dbt の run_results.json から失敗だけを要約して出す)
 - dbt: dbt_project.yml、profiles.yml(バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze 7表)。Silver のモデルは models/silver/ に置く(orders_from_events と6表。6表は macros/silver_latest.sql を呼ぶ)。2列のキーのテストは tests/generic/unique_combination.sql
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、replay-tables.md(7表のリプレイの仕様)、permissions.md、error-handling.md、secrets.md
 - docs/adr: 設計判断の記録(0001〜0012。以降は、判断のたびに足す)
 - notebooks: 確認用のノートブック(Git の管理外)
-- tests: pytest のテスト(test_orders_events.py、test_source_events.py、test_tables.py の 36 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
+- tests: pytest のテスト(test_orders_events.py、test_source_events.py、test_tables.py、test_dbt_failures.py の 39 本)。設定は pyproject.toml の `[tool.pytest.ini_options]` と `[tool.ruff]`
 - airflow: Dockerfile(公式 3.3.2 に、uv.lock どおりの venv `/opt/project-venv` を足す)、docker-compose.yaml(LocalExecutor + Postgres の5サービス)、.env(Git の管理外。見本は .env.example)、refresh_credentials.sh(ingest / transform の一時キーを `~/.ecom-airflow/credentials` に書き出す。Airflow を使う前に毎回打つ。期限は1時間)、dags/(olist_daily.py: 取り込み7表 → S3 → dbt run → dbt test。手動実行で target_date を渡す)。compose は、`~/.ecom-airflow` をフォルダごと読み取り専用でコンテナの `/opt/airflow/aws` に見せ、ingestion/・dbt/・data/ も `/opt/project` にマウントする。バケット名は `.env` の `LAKE_BUCKET`。プロジェクト直下の .dockerignore で、ビルドに送るのを pyproject.toml と uv.lock だけにする
 - app、semantic: これから使う
 
@@ -83,6 +83,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 遅延到着の確認(2026-11-04): 本番の Raw と Silver は上書きしない。遅延ありは別の場所(`raw/olist_late/`、Bronze `orders_events_late`、Silver `orders_from_events_late`)に作り、確認が終われば消す。dbt の変数 `table_suffix: _late` が、読む元と書く先を同時に切り替える。`run_ingest.py` は `--source-dir` と `--raw-dir` で場所を指定できる。設計書は orders-vertical-slice.md を参照。
 - 6表の Silver(2026-11-07): Silver は staging 寄りで結合しない(結合は Gold)。共通のマクロ `silver_latest` で、キーごとに最後に届いた1行を merge。reviews はレビュー×注文で1行。パーティションなし。詳細は replay-tables.md の「Silver」。
 - Airflow(2026-11-07): ローカルの Docker Compose で 3.3.2、LocalExecutor + Postgres(同時の書き込みに強いため。SQLite は試し用)。プロジェクトのライブラリは、Airflow 本体とは別の venv(`/opt/project-venv`)に入れ、版のぶつかりを避ける。AWS へは、手元で借りたロールの一時キーだけを読み取り専用で渡す(ADR 0012)。画面は `127.0.0.1:8080` だけで開く。
+- Airflow の運用(2026-11-14): リトライは2回・5分おき(dbt_test だけ 0)。通知は画面とログだけ。ログは取り込みログだけ S3 の logs/ に上げ、Airflow と dbt のログはローカルで 90 日。dbt の失敗は run_results.json の要約をタスクログに出す。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。届くファイルは data/source/、Raw は data/raw/(どちらも Git の管理外。simulator と run_ingest.py で作り直せる)。

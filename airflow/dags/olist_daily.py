@@ -31,6 +31,23 @@ DBT_ARGS = (
     '--vars \'{start_date: "{{ params.target_date }}", end_date: "{{ params.target_date }}"}\''
 )
 
+
+
+# dbt を流す共通の形。実行前に古い結果を消し、dbt の終了コードを保存し、
+# 失敗の要約を出したあとで、保存した終了コードで終わる(失敗ならタスクも失敗になる)
+def dbt_with_summary(command: str) -> str:
+    return (
+        # 前回の run_results.json を消す(dbt が結果を書く前に落ちたとき、古い結果を読まないため)
+        f"cd {PROJECT} && rm -f dbt/target/run_results.json && "
+        # ; で区切るので、dbt が失敗しても次へ進む。$? は直前の終了コードで、status に保存する
+        f"{DBT} {command} {DBT_ARGS}; status=$?; "
+        # 失敗した項目の要約を、タスクのログに出す
+        f"{PY} -m ingestion.dbt_failures dbt/target/run_results.json; "
+        # 保存した dbt の終了コードで終わる
+        "exit $status"
+    )
+
+
 with DAG(
     dag_id="olist_daily",
     schedule=None,  # 手動のみ
@@ -76,7 +93,7 @@ with DAG(
     # Silver を作る(窓はその日だけ)
     dbt_run = BashOperator(
         task_id="dbt_run",
-        bash_command=f"cd {PROJECT} && {DBT} run {DBT_ARGS}",
+        bash_command=dbt_with_summary("run"),
     )
 
     # テストを流す(同じ窓)
@@ -84,7 +101,7 @@ with DAG(
     # (タスクに書いた値が、default_args より優先される)
     dbt_test = BashOperator(
         task_id="dbt_test",
-        bash_command=f"cd {PROJECT} && {DBT} test {DBT_ARGS}",
+        bash_command=dbt_with_summary("test"),
         retries=0,
     )
 
