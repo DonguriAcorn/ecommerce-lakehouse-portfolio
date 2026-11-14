@@ -1,13 +1,13 @@
 # 権限設計表
 
 - 作成日: 2026-10-22
-- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。reader と deployer は実装前
+- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つ(plan 用、CI の dbt 用、prod の deployer)は、フェーズ4で作る(実装前)。reader は作らない(2026-11-14)
 
 ## 方針
 
 - 各ロールは、その処理に必要な権限だけを持つ(最小権限)。
 - 人のスイッチロールは後回しにする。実務では、環境ごとに AWS アカウントを分けたときに使う(ADR に書く)。
-- 環境(dev / test / prod)ごとに、同じ形のロールを作る。名前は `ecom-<環境>-<役割>` とする。
+- 環境(dev / prod の2つ。test は作らない)ごとに、同じ形のロールを作る。名前は `ecom-<環境>-<役割>` とする。CI のロールは環境をまたぐので、例外として `ecom-ci-<役割>` とする(名前は仮。フェーズ4で決める)。
 
 ## ロール一覧
 
@@ -15,8 +15,12 @@
 |---|---|---|
 | `ecom-dev-ingest` | リプレイと、Raw への取り込み | `portfolio-admin`(ローカルの Airflow や手元の実行) |
 | `ecom-dev-transform` | dbt と Athena による Silver、Gold の作成 | `portfolio-admin`(のちに GitHub Actions も追加) |
-| `ecom-dev-reader` | 集計結果の読み取り(アプリ、分析) | `portfolio-admin` |
-| `ecom-dev-deployer` | GitHub Actions からの Terraform の実行 | GitHub の OIDC(このリポジトリの `main` だけ) |
+| `ecom-ci-plan`(仮) | PR の `terraform plan`。状態ファイルと各リソースの読み取りだけ | GitHub の OIDC(PR 用の `sub`) |
+| `ecom-ci-dbt`(仮) | PR の `dbt build`。`ecom_ci` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ | GitHub の OIDC(PR 用の `sub`) |
+| `ecom-prod-deployer` | main のあと、手動承認を経た prod への Terraform と dbt の実行 | GitHub の OIDC(`sub` は GitHub Environments の `prod`) |
+
+- reader は作らない(アプリは Parquet を読むだけで AWS に接続しないため。要るときはフェーズ9で足す。2026-11-14)。
+- deployer は prod 専用の1つだけにする。dev は手元の `portfolio-admin` のまま。
 
 ## Terraform を apply する人
 
@@ -24,7 +28,8 @@
 |---|---|---|
 | terraform/bootstrap | `portfolio-admin`(手元で実行) | ローカルだけ |
 | terraform/global(Budgets、OIDC など、アカウントに1つのもの) | `portfolio-admin`(手元で実行) | S3(`global/terraform.tfstate`) |
-| terraform/envs/dev | `portfolio-admin`(手元で実行。のちに deployer) | S3(`envs/dev/terraform.tfstate`) |
+| terraform/envs/dev | `portfolio-admin`(手元で実行。dev は CI から apply しない) | S3(`envs/dev/terraform.tfstate`) |
+| terraform/envs/prod(フェーズ4で作る) | prod の deployer(main のあと、GitHub Environments の手動承認を経て。保存した plan だけを apply する)。最初の1回は `portfolio-admin` | S3(`envs/prod/terraform.tfstate`) |
 
 - global は、環境を作り直しても消えないよう、環境(envs/)とは別の状態ファイルに分ける。
 - bootstrap に共通リソースを入れない理由: bootstrap の状態はローカルだけにあり、マシンが壊れると失われるため。
@@ -37,10 +42,9 @@
 |---|---|---|---|---|---|
 | ingest | 読・書 | — | — | 置 | 置 |
 | transform | 読 | 読・書 | 読・書 | —(フェーズ2で置を足す) | — |
-| reader | — | gold だけ読 | 読・書 | — | — |
-| deployer | バケット自体の設定の管理(中のデータは読み書きしない) | 同左 | 同左 | 同左 | 同左 |
+| prod の deployer | バケット自体の設定の管理(中のデータは読み書きしない) | 同左 | 同左 | 同左 | 同左 |
 
-deployer は、状態ファイル用のバケットだけ、読み書きできる。
+prod の deployer は、状態ファイル用のバケットのうち `envs/prod/` だけ、読み書きできる(環境ごとに分ける)。CI の dbt 用ロールは、`iceberg/ci/` だけ読み書きできる。
 
 ## Athena と Glue の権限
 
@@ -48,19 +52,19 @@ deployer は、状態ファイル用のバケットだけ、読み書きでき�
 |---|---|---|
 | ingest | — | — |
 | transform | `ecom-dev` の workgroup だけ実行できる | bronze、silver、gold の3つのテーブル定義を、読み書き(dbt-athena が古いテーブルの版を整理するため、`GetTableVersions` と `DeleteTableVersion` も含む。2026-11-03 追加) |
-| reader | `ecom-dev` の workgroup だけ実行できる | gold の読み取りだけ |
-| deployer | workgroup の管理 | データベースの管理 |
+| prod の deployer | workgroup の管理(prod の分だけ) | データベースの管理(prod の分だけ) |
 
 ## 設計の考え方
 
 - `primary` の workgroup は使わせない。Athena の権限は、環境ごとの workgroup だけに限定する。
-- Athena は、実行した人(ロール)の権限で S3 を読み書きする。そのため、transform と reader には、Athena の権限に加えて、S3 の権限も必要である。
-- IAM を操作する権限は、deployer だけに限定し、対象を `ecom-` で始まる名前のロールに絞る。
+- Athena は、実行した人(ロール)の権限で S3 を読み書きする。そのため、transform には、Athena の権限に加えて、S3 の権限も必要である。
+- IAM を操作する権限は、prod の deployer だけに限定し、対象を `ecom-prod-` で始まる名前に絞る(`ecom-dev-*` は触れない。`ecom-` だけの絞り方では、同じアカウントの dev も触れてしまうため)。権限境界(permissions boundary)を付けるかは、フェーズ4の ADR で決める。
+- OIDC の `sub` で、PR 用と prod 用を分ける。`ecom-ci-plan` と `ecom-ci-dbt` は PR 用の `sub` だけを許可し、prod の deployer は GitHub Environments の `prod` の `sub` だけを許可する(PR 用の `sub` は許可しない)。これで、承認を通らないジョブは prod のロールを借りられない。
 - logs/ と quarantine/ は「置」にする。記録は、あとから書き換えたり消したりできないほうが、調査の証拠として信用できる。消すのは、S3 のライフサイクル(logs/ は 90日、quarantine/ は 30日)に任せる([error-handling.md](error-handling.md))。
 - アップロードは `aws s3 sync` で行う。sync は、送る先にすでにあるファイルの一覧を見るので、ingest には logs/ と quarantine/ の一覧の権限(`s3:ListBucket`)も要る。`--delete` は使わない(削除の権限がないため)。
 
 ## 実装の順番
 
 1. 取り込みと変換に必要な `ingest` と `transform` を、最初に作る(実装済み)。
-2. `reader` は、Gold とアプリの段階で作る。
-3. `deployer` は、CI/CD(OIDC)の段階で作る。
+2. `reader` は作らない(2026-11-14)。
+3. CI のロール3つ(plan 用、CI の dbt 用、prod の deployer)は、CI/CD(OIDC)の段階で作る。

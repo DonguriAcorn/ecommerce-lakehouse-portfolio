@@ -8,7 +8,8 @@
 - 済みの基準: 動作を確認し、コミットと push まで済んだもの。
 - 「← 今ここ」は、常に1か所だけ付ける。
 - 印: 〔必須〕〔推奨〕は handoff §7 の区分。〔追加〕は handoff §8 に無く、あとから足したもの。
-- 遅れたときに後ろへ回す順: 〔後回し候補1〕質問ログ → 〔後回し候補2〕パイプライン健康状態ページ → 〔後回し候補3〕Runbook。必須は落とさない。
+- 遅れたときに後ろへ回す順: 〔後回し候補1〕分析エージェントの実装 → 〔後回し候補2〕パイプライン健康状態ページ → 〔後回し候補3〕dbt docs の公開。必須は落とさない。(質問ログと Runbook は `[~]` にした。2026-11-14)
+- スコープの方針(2026-11-14 に改訂): 必須はすべて入れ、推奨は選んで入れる。環境は dev と prod の2つ(test は作らない)。
 - README と ADR は、全フェーズで随時書き足す。
 - 対象外(バックログ)と、入れないと決めたものは、handoff §7 を参照。
 - 更新するのは、セッションの終わり(「ここまでにする」)。下の「現在の状態」と一緒に更新案を示し、承認を得てからコミットする。
@@ -16,15 +17,29 @@
 ## 現在の状態
 
 - 途中経過: フェーズ1は済み。フェーズ2で、dbt の土台(dbt-athena、profiles.yml は環境変数 `LAKE_BUCKET`、dbt debug 済み)を作った。計画を見直し(plan-critic 3回)、orders の Raw をイベント単位にした(ADR 0010)。コードは simulator/(業務システムの代わり。data/source/ に届いた日ごとの JSON Lines を作る)と ingestion/(パイプライン。検証・隔離・型・監査カラムで Raw へ)に分けた。Bronze `orders_events` を Terraform で作り、S3 に 2016-09-04〜2017-10-06 の Raw(398 ファイル、110,739 行)を上げた。見直しで、検証の抜けと空の日の Raw の型のずれを直した(pytest 19 本)。旧版(スナップショット)のコード、ノートブック、AWS の Raw / Bronze / Silver は消した(plan-critic 3回)。2c で、dbt の Silver `ecom_dev_silver.orders_from_events` を作った(3日分 1,308 行、dbt tests 7本 PASS、比較用コピー baseline との差分は業務の8列で双方向 0 件)。確認後に baseline は DROP した。dbt-athena が古い版を整理するため、transform ロールに Glue の `GetTableVersions` / `DeleteTableVersion` を足した(plan は 0 追加・1 変更・0 削除)。2d で、全期間を Raw に上げ(775 ファイル、394,713 行)、Silver を全期間で作った(99,441 行)。元の CSV と注文ごとに突き合わせて、業務の 8 列で差分 0。同じ日と古い日の再実行でも、Silver の指紋は同じ(冪等)。3 で、遅れて届く出来事(5%、3 日遅れ)を別の Raw / Bronze / Silver に流し、遅延なしの Silver と業務の 8 列で差分 0、再実行でも同じ(冪等)を確かめた。dbt は `--vars` の `table_suffix: _late` で、読む Bronze と書く Silver を同時に切り替える。これで orders の縦の1本(フェーズ2の前半)は完成。確認用の遅延ありデータ(Silver / Bronze / S3 / ローカル)は 2026-11-04 に消した。リプレイの共通化は、計画を plan-critic で計6回レビューし、承認済み(2026-11-05)。同じ日に 1a〜5 を進めた。payments は外し、売上は price + freight、カテゴリ名は英訳 → 元の名前 → `unknown` に決めた(カテゴリが空は売上の約 1.3%)。reviews は客が答えた日に届く形に変え、reviews だけ期間を 2018-10-29 まで延ばした(ADR 0011、replay-tables.md)。コードは registry(ingestion/schema.py、7表)と共通の受付(ingest_table.py。orders だけの検証は orders_checks.py)に作り直し、ingest_events.py は消した。pytest 36 本、ruff 0 件。ローカルで6表の Raw を作った(隔離 0 行、金額の合計は CSV と 1 セントまで一致、再実行で差分 0)。orders の Raw は新しいコードで作り直しても全 775 ファイルで差分 0(Bronze / Silver に影響なし)。ログの段階の名前は LOAD / VALIDATE / RUN / WRITE に変え、1日ごとの結果(DAY_RESULT)を足した。2026-11-07 に、6表の Raw を S3 に上げ、リプレイの共通化を終えた。orders の Silver に監査カラム3つ(最後に届いた出来事の値)を足し、業務の8列の指紋は前後で同じ。同じ日に、6表の Bronze を作った(bronze.tf を「表の一覧 + for_each」にし、orders_events は `moved` で移した。説明は日本語。plan は 6 追加・1 変更・0 削除)。Athena で7表を数え、ローカルの Raw と行数・キーの種類の数・列ごとの空でない行の数が一致した。同じ日に、6表の Silver を dbt で作った(共通のマクロ `silver_latest`。キーごとに最後に届いた1行。merge、`full_refresh=false`、パーティションなし、監査カラム3つ)。Silver は staging 寄りで結合しない(結合は Gold)。reviews はレビュー×注文で1行(重複 814 件は、同じレビューが複数の注文に付いたもので中身は同じ)。3日の窓 → 再実行で変化 0 → 全期間の順に流し、dbt tests 48 本 PASS、7表とも Silver と Bronze のキーの種類の数が一致した。同じ日に、Airflow の土台に着手した。AWS への認証は、手元で ingest / transform ロールを借りた一時キーを、コンテナに読み取り専用で渡す方式に決めた(ADR 0012)。ステップ1で、ローカルの Docker Compose に Airflow 3.3.2(LocalExecutor + Postgres、5サービス)を起こし、すべて healthy、コンテナの中の別の venv(`/opt/project-venv`、uv.lock どおり)で dbt-core 1.12.6 / athena 1.11.1 が動くことを確かめた。ステップ2で、一時キーを手元で発行して(refresh_credentials.sh)コンテナへ読み取り専用で渡す形を実装し、2つのロールで get-caller-identity が通ることを確かめた(2026-11-11)。ステップ3で、1日分の DAG olist_daily を作り(取り込み7表 → S3 → dbt run → dbt test)、画面から 2016-09-04 を流して全タスクが成功した(2026-11-11)。ステップ4で、同じ日を CLI でもう1回流し、Silver の指紋(業務の8列)・Silver の行数・Bronze の行数が前後で同じことを確かめた(2026-11-13)。これで「Airflow の土台」は完成。ログは、Airflow のタスクのログが airflow/logs/、取り込みのログが data/logs/、隔離が data/quarantine/、dbt が dbt/logs/ にあり、S3 には上げていない。2026-11-14 に、「Airflow の運用」の1と2を済ませた。運用の決め事(リトライ、通知、ログ、dbt の失敗)を決め、DAG にリトライ(2回・5分おき。dbt_test だけ 0)を入れ、dbt の失敗の要約(ingestion/dbt_failures.py)を作ってログに出した。3 つ目として、取り込みログを S3 の logs/ へ上げる(upload_logs.py と DAG のタスク。2026-11-14)。4 つ目として、ローカルログの掃除(clean_logs.py)。5 つ目として、Iceberg の整理(iceberg_maintenance.py と DAG。ADR 0013)。これで「Airflow の運用」は完成。最後に、全期間のバックフィル(2026-11-14)。`upload_raw` を期間対応にし、DAG `olist_backfill` を作って、30 日と 120 日の窓を流し、どちらも成功した(1 分 40 秒、2 分 21 秒)。全期間は流さず、Silver 7表のキーの種類の数が CSV と一致することを確かめた(ADR 0014)。これでフェーズ2は完了。
-- 次の1手: フェーズ3の「dbt の meta / tags(owner、pii、update_frequency)」から(手を動かす前に、フェーズ3の説明と、なぜ必要かから入る)。バックフィルは、画面で start_date と end_date を渡して DAG `olist_backfill` を流す(1窓は数分。窓の前に一時キーを発行し直す)。新しい DAG は一時停止で作られるので、`airflow dags unpause <DAG名>` が先。ローカルログの掃除は `uv run python -m ingestion.clean_logs`(一覧)と `--delete`(実際に消す)。Airflow を使う前に、`bash airflow/refresh_credentials.sh` で一時キーを発行し直す(期限は1時間。コンテナの再起動は不要)。Airflow の起動は `docker compose -f airflow/docker-compose.yaml up -d --build`(Dockerfile と uv.lock を変えていなければ `--build` は不要)、停止は `down`(`-v` は実行の履歴が消えるので付けない)。`airflow/.env` は deny で Claude が読めないので、作り直しはユーザーが打つ。説明は、書く前に1行ずつ、「書ける / 読める / 流す」の段階を付けて示す。注意: terraform は `AWS_PROFILE` を外した管理者の認証で打つ(transform ロールのままだと状態ファイルのロックで 403 になる)。S3 の削除は guard-bash が止めるので、ユーザーがターミナルで打つ。 simulator と ingestion は、プロジェクト直下で `uv run python -m simulator.make_source_events` / `-m ingestion.run_ingest` と実行する(`python simulator/...` は import で失敗する)。full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET=...` が要る。Claude が dbt や Airflow の実行をしてよいという許可は、次のセッションには引き継がない。
+- 次の1手: フェーズ3の「Gold の設計」から(手を動かす前に、フェーズ3の説明と、なぜ必要かから入る。meta/tags、Lv1、tests は Gold と同時に同じ YAML へ書く)。2026-11-14 にスコープを見直した(残作業は下の「スコープ見直しの残作業」)。バックフィルは、画面で start_date と end_date を渡して DAG `olist_backfill` を流す(1窓は数分。窓の前に一時キーを発行し直す)。新しい DAG は一時停止で作られるので、`airflow dags unpause <DAG名>` が先。ローカルログの掃除は `uv run python -m ingestion.clean_logs`(一覧)と `--delete`(実際に消す)。Airflow を使う前に、`bash airflow/refresh_credentials.sh` で一時キーを発行し直す(期限は1時間。コンテナの再起動は不要)。Airflow の起動は `docker compose -f airflow/docker-compose.yaml up -d --build`(Dockerfile と uv.lock を変えていなければ `--build` は不要)、停止は `down`(`-v` は実行の履歴が消えるので付けない)。`airflow/.env` は deny で Claude が読めないので、作り直しはユーザーが打つ。説明は、書く前に1行ずつ、「書ける / 読める / 流す」の段階を付けて示す。注意: terraform は `AWS_PROFILE` を外した管理者の認証で打つ(transform ロールのままだと状態ファイルのロックで 403 になる)。S3 の削除は guard-bash が止めるので、ユーザーがターミナルで打つ。 simulator と ingestion は、プロジェクト直下で `uv run python -m simulator.make_source_events` / `-m ingestion.run_ingest` と実行する(`python simulator/...` は import で失敗する)。full-refresh はしない。dbt を動かすターミナルでは、先に `export LAKE_BUCKET=...` が要る。Claude が dbt や Airflow の実行をしてよいという許可は、次のセッションには引き継がない。
 
 ## 未決(着手の前に決める)
 
-- 月額の上限額(Budgets の前)
-- test / prod に流すデータの日数(フェーズ4)
 - 公開アプリのホスティング先と、export の置き場所(フェーズ5)
-- handoff §5 の API 取り込み(為替)を入れるか、`[~]` にするか
-- 為替を、Gold と画面に入れるか(フェーズ3の「Gold の設計」で、画面の案から決める。reviews と sellers は使い、geolocation は使わないと 2026-11-05 に決めた)
+- SCD2 の作り方(customers は 2016-09-04 に1回しか届かないため、dbt snapshot は変化を見られない。注文の購入日の順から valid_from / valid_to を SQL で作るか、デモ用にデータを足すか。フェーズ3の「Gold の設計」で決める)
+- Gold の粒度(handoff の指標例は fact_order_items、タスク名は fact_orders。「Gold の設計」で決める)
+- prod に全期間を流す窓の大きさ(フェーズ4で実測して決める。一時キーの期限は1時間)
+- 評価セットを測る場所(仮: 手元。フェーズ6の着手時に決める)
+
+決めた(2026-11-14): 月額の上限は 10 ドル(Budgets は済み)。為替 API の取り込みは `[~]`、為替は Gold と画面に入れない。prod のデータは全期間。reviews と sellers は使い、geolocation は使わない(2026-11-05)。
+
+## スコープ見直しの残作業(2026-11-14)
+
+tasks.md は更新済み。次は、差分を示して承認を得てから1つずつ直す。
+
+- [x] CLAUDE.md(2026-11-14 に済み): 「環境は dev / test / prod」→ dev / prod、スコープの行を「必須はすべて、推奨は選んで入れる」に、`terraform/envs` の「test と prod は」→「prod は」
+- [x] handoff.md(2026-11-14 に済み): §7 の方針、「3環境」と「test へ自動デプロイ」の記述(L25、31、48、64、84、118 付近)、質問ログ・為替 API・reader・Runbook を `[~]` に
+- [x] docs/design/permissions.md(2026-11-14 に済み): 「dev / test / prod」、`ecom-dev-deployer` → `ecom-prod-deployer`、reader の行、apply する人の表に `terraform/envs/prod`、plan 用と CI の dbt 用ロールの行
+- [x] terraform/modules/lakehouse_env/variables.tf(2026-11-14 に書き換え。validate は下で確認): `contains(["dev", "test", "prod"], …)` → `["dev", "prod"]`(plan は変更 0 件のはず)
+- [ ] 新しい ADR「3環境から2環境へ」(フェーズ4で書く。0001 は書き換えず置き換える)
+- [ ] 統合 ADR「エージェントの構想」(フェーズ6で書く)
+- [x] ADR 0001 と 0006 に3環境の前提が残っていないか確認する(2026-11-14: 0001 の状態行に「置き換え予定」を追記。0006 の本文は履歴として残し、新しい ADR で扱う)
 
 ## フェーズ1: 基盤
 
@@ -68,7 +83,7 @@
 - [x] GitHub の OIDC プロバイダを、共通の置き場所に作る〔必須〕(deployer ロールはフェーズ4)
   - 済み(terraform/global/github_oidc.tf)。url と client_id_list の2項目だけ。plan は 1 add、apply 後に CLI で確認(2026-11-03)
 - [x] モジュール化(完了: `moved` ブロックを使い、plan の置き換えが0件、削除が0件)
-  - 済み。入力は `env` と `admin_user_name`。dev の 14 件を移動し、apply 後も `No changes`。`moved.tf` は消した。状態のバックアップは terraform/backups/(Git の管理外)。test / prod の作成はフェーズ4(下記)(2026-11-03)
+  - 済み。入力は `env` と `admin_user_name`。dev の 14 件を移動し、apply 後も `No changes`。`moved.tf` は消した。状態のバックアップは terraform/backups/(Git の管理外)。prod の作成はフェーズ4(下記。test は 2026-11-14 に作らないと決めた)(2026-11-03)
 - [x] ADR を書く
   - 済み。0001〜0009(環境の分け方、SSO 後回し、テーブル定義、Raw の形、ログ、S3 の構成、Airflow、データカタログ、AI 開発の構成)(2026-11-03)
   - 候補: Bronze を外部テーブルにした理由、Raw の段階で型を付けた Parquet にした簡略化、エラーのログを S3 に JSON Lines で残す理由、Silver の定義を Terraform ではなく SQL(のちに dbt)で持つ理由、Airflow を選んだ理由、S3 の構成、環境の分け方とアカウント分離、スイッチロールを後回しにした理由、管理者を IAM ユーザーのままにし SSO を後回しにした理由、専用のデータカタログを使わない理由、AI 開発の構成(禁止の設定、CLAUDE.md、skills、サブエージェントの使い分け)
@@ -78,7 +93,7 @@
 完了の目安: 全テーブル・全期間を Airflow で流し、指定した3日を再実行して、全 Silver の差分が 0
 
 - [x] ruff と pytest を始める〔推奨。handoff ではフェーズ4。前倒し〕(2026-11-03: `uv run ruff check` は指摘 0 件、`uv run pytest` は 2 passed)
-- [x] lake バケットの S3 バージョニング〔追加〕(2026-11-03: dev に有効化。非現行バージョンは 14 日で削除。バケット全体にかかるルール `expire-noncurrent-versions` を足した。plan は 1 追加・1 変更・0 削除。test / prod はフェーズ4で作るときに、モジュールを通して同じ設定になる)
+- [x] lake バケットの S3 バージョニング〔追加〕(2026-11-03: dev に有効化。非現行バージョンは 14 日で削除。バケット全体にかかるルール `expire-noncurrent-versions` を足した。plan は 1 追加・1 変更・0 削除。prod はフェーズ4で作るときに、モジュールを通して同じ設定になる)
 - [x] orders の Raw をイベント単位にする〔追加。ADR 0010。リプレイの共通化の前に行う〕
   - 計画: plan-critic の3回レビュー済み(2026-11-03)。Silver は dbt で作り直す。`ingest_date` は「届いた日」。旧版(スナップショット)の Raw / Bronze / Silver と `sql/silver/` は消した(2026-11-03。plan-critic の3回レビュー済み。比較用コピー `orders_baseline_20261103` は、2c で差分 0 を確かめて DROP した)。
   - [x] 2a 設計と Python: ADR 0010。`simulator/`(送る側。CSV → `data/source/` の JSON Lines、`arrival_date` ごと)と `ingestion/`(パイプライン。届いたファイル → 検証・隔離 → Raw)に分けた。旧版のコードとノートブックは消し、docs/design を今の形に書き直した。見直しで、検証の抜け(順位・印・空の順位)と、空の日の Raw の型のずれを直した(2026-11-03: pytest 19 passed、ruff 0 件。ソースと Raw は全期間 394,713 件・775 日。Raw は全ファイルで型が1種類)
@@ -117,72 +132,79 @@
 
 完了の目安: `dbt build` がすべて通る
 
-- [ ] dbt の meta / tags(owner、pii、update_frequency)〔推奨〕(PII のハッシュ化より先に。どの列が PII かを決めるため) ← 今ここ
-- [ ] セマンティックレイヤー Lv1(dbt の YAML に、テーブルとカラムの説明)〔必須〕
-- [ ] Gold の設計: 最終の画面から逆算して、各データソースの出力先を決める〔追加〕(Gold のスター型より先。ダッシュボードの画面ごとに、必要な元データと列を書き出し、為替を入れるかを決める。結果は docs/design に残し、判断は ADR にする)
-- [ ] Gold のスター型(fact_orders、dim_customer、dim_product、dim_date)〔必須〕(上の設計で決めた列で作る)
-- [ ] SCD Type 2〔必須〕(dim_customer。材料は customers のリプレイ)
-- [ ] dbt tests〔必須〕
-- [ ] 鮮度チェック〔必須〕(基準は今の時刻ではなく `_ingest_date`。データが 2018 年のため)
-- [ ] PII のハッシュ化〔推奨〕
-- [ ] データコントラクト〔推奨〕
-- [ ] 用語集(GMV、リピート率など)〔推奨〕
+進め方(2026-11-14 に見直し): YAML を2回書かないため、Gold の設計 → Gold と、meta/tags・Lv1・tests を同時に書く。
+
+- [ ] Gold の設計: 最終の画面から逆算して、各データソースの出力先を決める〔追加〕(Gold のスター型より先。ダッシュボードの画面ごとに、必要な元データと列を書き出す。為替は入れない。Gold の粒度と SCD2 の作り方もここで決める。結果は docs/design に1枚、判断は ADR 1本) ← 今ここ
+- [ ] Gold のスター型(fact_orders、dim_customer、dim_product、dim_date)〔必須〕(上の設計で決めた列で作る。2つ目以降のモデルは「すでにある形の繰り返し」)
+- [ ] dbt の meta / tags〔推奨・縮める〕(モデルは owner と update_frequency、列は pii だけ。Gold と同じ YAML に同時に書く。PII のハッシュ化と除外一覧の元になる)
+- [ ] セマンティックレイヤー Lv1〔必須・縮める〕(Gold と同じ YAML に、テーブルとカラムの説明。Silver は主要列だけ)
+- [ ] SCD Type 2〔必須〕(dim_customer。customers は1回しか届かないため、作り方は「Gold の設計」で決める。dbt-athena の snapshot が Iceberg で動くかは、着手時に公式文書で確かめる)
+- [ ] dbt tests〔必須・縮める〕(Silver に 48 本ある。Gold に unique / not_null / relationships / accepted_values と、金額の突き合わせ 1 本を足す)
+- [ ] 鮮度チェック〔必須・縮める〕(dbt の `source freshness` は今の時刻と比べるため使わない。`max(_ingest_date)` と Airflow の target_date を比べる singular test)
+- [ ] PII のハッシュ化〔推奨・縮める〕(1〜2 列、マクロ1つ。Olist はもともと匿名なので、仕組みを示す程度)
+- [ ] データコントラクト〔推奨・縮める〕(Gold の型を `contract: enforced` で固定する。dbt-athena + Iceberg + incremental で使えるかは着手時に確かめ、動かなければ後ろへ)
+- [ ] 用語集〔推奨・縮める〕(GMV、リピート率など。`{% docs %}` の1ページ。dbt docs に出る)
 
 ## フェーズ4: CI/CD
 
-完了の目安: PR で lint・テスト・plan・`dbt build` が動き、main へのマージで、test に Terraform と dbt が自動で反映される
+完了の目安: PR で ruff・pytest・plan・`ecom_ci` での `dbt build` が動き、main へのマージのあと、手動承認を経て prod にデプロイされる(環境は dev と prod の2つ。test は作らない)
 
-- [ ] sqlfluff と pre-commit〔推奨〕(gitleaks の pre-commit だけは、フェーズ1に前倒しした)
-- [ ] test / prod の環境を作る(フェーズ1のモジュールを使う)〔必須〕
-- [ ] test / prod のデータを用意する〔追加〕
-- [ ] GitHub Actions から OIDC で接続: deployer ロール、PR 用の plan ロール、CI 専用のロール〔必須〕(CI から dev の本物のテーブルに書けないようにする)
-- [ ] PR チェック(ruff、pytest、sqlfluff、`terraform plan`、一時スキーマでの `dbt build`。PR を閉じたら片付ける)〔必須〕
-- [ ] main へのマージで test に自動デプロイ、prod は手動の承認(GitHub Environments)〔必須〕
-- [ ] Slim CI(`state:modified+`)〔推奨〕
+- [ ] pre-commit に ruff を足す〔推奨・縮める〕(gitleaks の pre-commit だけは、フェーズ1に前倒しした。sqlfluff は v1.2 の後ろ)
+- [ ] ADR「3環境から2環境へ」〔追加〕(0001 は書き換えず、置き換える。理由: 同じアカウントでは test は名前だけの分離。代わりの検証は PR の `ecom_ci`、plan を読んでの承認、ブランチ保護。失うもの、残るリスク、将来の乗り換え(アカウント分離、staging)も書く)
+- [ ] prod の環境を作る(フェーズ1のモジュールを使う。`prevent_destroy` を付ける)〔必須〕
+- [ ] prod に全期間のデータを入れる〔追加〕(窓を分けて流し、窓の前に一時キーを発行し直す。窓の大きさは実測で決める。prod 用のロールとプロファイルの切り替えを決める)
+- [ ] GitHub Actions から OIDC で接続: ロール3つ〔必須〕(dev は手元の portfolio-admin のまま)
+  - plan 用: 状態ファイルと Describe / Get の読み取りだけ(PR 用の `sub`)
+  - CI の dbt 用: `ecom_ci` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ(PR 用の `sub`)
+  - prod の deployer: OIDC の `sub` に GitHub Environments の `prod` を入れる。IAM は `ecom-prod-*` だけ。書き込み系のロールに PR 用の `sub` は許可しない
+- [ ] PR チェック(ruff、pytest、`terraform plan`、`ecom_ci` での `dbt build`)〔必須〕(`ecom_ci` は1つだけで、並行する PR は禁止。固定の小さなデータで流す。ブランチ保護で PR チェックを必須にする)
+- [ ] main へのマージで、手動承認のあと prod にデプロイ(GitHub Environments。承認画面に plan の要約を出し、保存した plan だけを apply する。dev への自動デプロイはしない)〔必須〕
 
 ## フェーズ5: アプリ(v1.0)
 
 完了の目安: 公開 URL で見られる
 
 - [ ] 前提: Olist のライセンスを確認する〔必須〕
-- [ ] export の置き場所と、アプリへの渡し方を設計する〔追加〕
-- [ ] reader ロール〔追加〕
-- [ ] Gold の Parquet export〔必須〕
-- [ ] セマンティックレイヤー Lv2(semantic/metrics.yml)〔必須〕
+- [ ] Gold の Parquet export と、置き場所・アプリへの渡し方の設計〔必須。設計は ADR 1本にまとめた〕
+- [~] reader ロール(アプリは Parquet を読むだけで AWS に接続しないため v1.0 では使い道がない。要るときはフェーズ9で足す。2026-11-14)
+- [ ] セマンティックレイヤー Lv2(semantic/metrics.yml。指標 4〜5 個。ダッシュボードと AI が同じ読み込み関数を使う)〔必須〕
 - [ ] Streamlit のダッシュボード(売上 KPI、期間比較、リピート率、商品ランキング)〔必須〕
-- [ ] パイプライン健康状態ページ〔推奨〕〔後回し候補2〕
+- [ ] パイプライン健康状態ページ〔推奨・縮める〕〔後回し候補2〕(export のときに status.json を1つ出して表示するだけ)
+- [ ] README の最小版〔必須〕
 - [ ] v1.0 のタグを付けて公開する
 
 ## フェーズ6: AI(v1.1)
 
-完了の目安: 評価セットの正答率を README に載せられる
+完了の目安: 評価セットの正答率(手元で測定)を README に載せられる。CI で走らせるのは、ガードレールの単体テストだけ
 
 - [ ] 前提: 使う LLM と予算を決める(CI で評価する費用も含む)
 - [ ] ガードレール(SELECT のみ、Gold のみ、LIMIT、PII カラムの除外、sqlglot)〔必須〕
 - [ ] 悪用対策(閲覧者のキー入力か、回数の制限)〔必須〕
 - [ ] AI アナリスト(質問 → SQL → 検証 → 実行 → 表・グラフ・要約)〔推奨〕
-- [ ] 分析エージェントの設計〔追加・推奨〕(完了: docs/design に、役割、入力、出力、使うツール、1問1答との違い、止める条件を書き、ADR にする)
-- [ ] 分析エージェントの実装(複数ステップ+Streamlit 表示+pptx のダウンロード)〔追加・推奨〕〔後回し候補の先頭〕
-- [ ] PII の除外の一覧を、pii フラグから自動で作る〔推奨〕
-- [ ] 評価セット(20〜30 問)と、CI での測定〔推奨〕
-- [ ] 質問ログ〔推奨〕〔後回し候補1〕(書き先を決めて、handoff §10 を直す)
+- [ ] エージェントの構想 ADR〔追加・推奨・縮める〕(分析エージェントと運用エージェントを1本にまとめる。役割、入力、出力、使うツール、止める条件を短く書く。運用エージェントの③自動修正を実装しない理由も、1段落で書く)
+- [ ] PII の除外の一覧を、pii フラグから自動で作る〔推奨〕(manifest.json を読むだけ。手書きだと定義がずれるため残す)
+- [ ] 評価セット(20 問)と、手元での測定〔推奨・縮める〕(仮。測る場所はフェーズ6の着手時に決める。実 LLM のキーを GitHub に置かない)
+- [~] 質問ログ(handoff §10 の「Iceberg に貯める」は、§4 の「公開アプリに AWS の認証情報を持たせない」と両立しない。理由は README の「やらないこと」に書く。2026-11-14)
 - [ ] v1.1 のタグ
+- [ ] 分析エージェントの実装(複数ステップ+Streamlit 表示+pptx のダウンロード)〔追加・推奨〕〔後回し候補1〕(v1.2 の後ろ。任意)
 
 ## フェーズ7: 仕上げ(v1.2)
 
 完了の目安: 第三者が README だけで再現できる(新しく clone した環境で確かめる)
 
-- [ ] Iceberg の運用の調整とデモ(compaction、スナップショットの削除)〔推奨〕
-- [ ] スキーマ進化のデモ〔推奨〕
-- [ ] dbt docs の公開〔推奨〕
-- [ ] Runbook〔推奨〕〔後回し候補3〕
-- [ ] 月次のコストを記載する〔推奨〕
-- [ ] README を作る〔必須〕(システム図: README の中は Mermaid か SVG、詳しい図は HTML のページにしてリンクする)
-- [ ] README に「やらないこと」を、理由つきで書く〔推奨〕
-- [ ] 社内展開時の構成の ADR(実施するかは未定)
+- [x] Iceberg の運用の調整とデモ(compaction、スナップショットの削除)〔推奨〕(フェーズ2で済み。ADR 0013 と iceberg-maintenance.md に実測まである。README からリンクする。2026-11-14)
+- [ ] スキーマ進化のデモ〔推奨〕(Raw に列を足し、`on_schema_change: append_new_columns` で Silver に届くのを確かめる。型の変更と列の削除は扱わないと書く)
+- [ ] dbt docs の公開〔推奨〕〔後回し候補3〕(main のデプロイの workflow から GitHub Pages へ。系統図が見える)
+- [~] Runbook(error-handling.md、iceberg-maintenance.md、ADR 0014 に手順がすでにある。README の「運用」節からリンクする。2026-11-14)
+- [ ] 月次のコストを記載する〔推奨〕(Cost Explorer の実数を5行ほど)
+- [ ] README を作り込む〔必須〕(最小版は v1.0 で出す。システム図: README の中は Mermaid か SVG、詳しい図は HTML のページにしてリンクする)
+- [ ] README に「やらないこと」を、理由つきで書く〔必須に格上げ〕(今回 `[~]` や後ろへ回したもの、test 環境、質問ログ、為替 API、reader、Runbook、Snowflake も載せる)
+- [ ] README に「本番ならこうする」を10行ほど書く〔推奨〕(社内展開の ADR の代わり。アカウント分離、staging、SSO)
 - [ ] v1.2 のタグ
 
-## フェーズ8: Snowflake 連携(v1.0 以降の拡張)
+## フェーズ8: Snowflake 連携(v1.2 の後ろ。任意)
+
+時間があれば最小版(読めた + 1クエリの結果が一致 + スクリーンショット)だけ。実行時間と課金の比較は削ってよい。
 
 完了の目安: 同じ SQL が両方のエンジンで同じ結果になり、比較表が README にある
 
@@ -191,12 +213,14 @@
 - [ ] 同じ集計 SQL を Athena と Snowflake で実行し、結果が一致することを確かめるテスト
 - [ ] 実行時間・課金・使い勝手の比較を、ADR と README に書く(スクリーンショットも残す)
 
-## フェーズ9: 運用エージェント(v1.3)
+## フェーズ9: 運用エージェント(v1.2 の後ろ。任意)
+
+設計は、フェーズ6の統合 ADR「エージェントの構想」に含める。下の項目は、実装するときだけ使う。
 
 完了の目安: 失敗ログを渡すと、原因と直し方を説明できる(ローカルのみ)
 
 - [ ] 前提: 診断するログの出どころを決める(Airflow のログを S3 に出すか)
-- [ ] 運用エージェントの設計〔追加〕(完了: docs/design に、役割、読むもの、答え方、使うツール、権限、3段階の線引きを書き、ADR にする)
+- [ ] 運用エージェントの設計〔追加〕(フェーズ6の統合 ADR に1段落。実装するときに、docs/design に、役割、読むもの、答え方、使うツール、権限、3段階の線引きを書く)
 - [ ] 読み取り専用の ops-reader ロールを permissions.md に足す
 - [ ] マスク層(AWS 由来の文字列を LLM に渡す前に隠す)
 - [ ] ①質問応答(リポジトリ、docs、dbt の定義、logs/)
@@ -215,11 +239,10 @@
   - マスタの型(日付なし): sellers、products、product_category_name_translation
   - customer_unique_id ごとに住所が変わったものが 252 件ある(SCD2 の材料)
 - Airflow: dbt は Airflow と別の venv で動かす。`_batch_id` に Airflow の run_id を渡す。メモリは約 4GB が必要。通知先はシークレットとして扱う。dbt の失敗は、`run_results.json` の要点を logs/ に書く(そのときに、transform ロールへ logs/ の書き込みを足す)。
-- CI 専用のロール: `ecom_ci_*` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は読むだけ。
+- CI 専用のロール: `ecom_ci` の Glue DB(1つだけ)と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ。`iceberg/ci/` のライフサイクル(例: 3日)で S3 の実データを消す。dbt の `generate_schema_name` と sources.yml の切り替えが要るかは、着手時に確かめる。
 - sqlfluff: テンプレーターは jinja にして、Athena に接続しない。
 - export: 公開アプリに AWS の認証情報を持たせない(案: Git の例外のパス、GitHub Releases、ビルド時に取得)。書き出すロール、permissions.md の `export/` 列、ライフサイクルも決める。健康状態ページは、export のときに状態の要約も出す。
 - AI エージェント(2026-11-03、plan-critic 2回。3回目は未実施): 運用②の評価データ(合成ログかマスク済みの実ログか。保存前にマスクを通す)/ 実 LLM の評価をどこで回すか(手元か main の週次 CI。作者のキーを GitHub に置かない)/ マスクは AWS 由来の文字列だけにかけ、切り詰めの前に適用する(アナリストの数字は壊さない)/ ops-reader は読むプレフィックスを列挙し、Athena の専用 workgroup に合計スキャン上限を付ける / 出力に外部 URL を描画しない。reviews の本文は AI から見える列に入れない / 録画した応答の CI は「ハーネスの回帰テスト」と呼ぶ / 1質問あたりの最大ステップ数・トークン・1日の上限と、月の LLM 予算 / ADR 候補: 運用エージェントの③を実装しない理由
-- 質問ログ: handoff §10 の「Iceberg に貯める」は、§4 の「公開アプリに AWS の認証情報を持たせない」と両立しない。
 - plan-critic の指摘(フェーズ2の計画を決めるとき、正式に3回のレビューを通す):
   - 完了の基準をテーブルの型ごとに分ける(明細型は3日の再実行で差分0、マスタ型は全件を入れ直して同じ結果)
   - Silver の主キーの unique / not_null は、フェーズ2の「全テーブルの Silver」の完了に含める(relationships はフェーズ3)
