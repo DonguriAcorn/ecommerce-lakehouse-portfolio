@@ -90,6 +90,16 @@ with DAG(
         append_env=True,
     )
 
+    # 取り込みログ(その日 = UTC の今日の run_date)を S3 の logs/ へ上げる。ここも ingest ロール
+    # trigger_rule="all_done": 取り込みが失敗しても動かす(失敗した日のログこそ必要なため)
+    upload_logs = BashOperator(
+        task_id="upload_logs",
+        bash_command=f"cd {PROJECT} && {PY} -m ingestion.upload_logs",
+        env={"AWS_PROFILE": "ecom-dev-ingest"},
+        append_env=True,
+        trigger_rule="all_done",
+    )
+
     # Silver を作る(窓はその日だけ)
     dbt_run = BashOperator(
         task_id="dbt_run",
@@ -107,3 +117,5 @@ with DAG(
 
     # 順番: 7表の取り込み(同時)→ S3 へ → dbt run → dbt test
     ingest_tasks >> upload_raw >> dbt_run >> dbt_test
+    # ログの upload は、取り込みの後ろの別枝(ログが上がらなくても dbt は止めない)
+    ingest_tasks >> upload_logs

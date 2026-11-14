@@ -54,6 +54,7 @@
 - 場所: `logs/ingest/olist/orders_events/run_date=YYYY-MM-DD/batch_id=<batch_id>/events.jsonl`
 - 形式: JSON Lines(1行 = 1つの出来事)。Athena で集計できるように、項目に分けて持ち、`message` は項目から組み立てる。
 - ローカルでは `data/logs/` の下に同じ形で書く。画面(標準出力)にも `message` を出す。
+- S3 へ上げる(2026-11-14): Airflow の DAG `olist_daily` のタスク `upload_logs`(`ingestion/upload_logs.py`、ingest ロール)が、`run_date=` が UTC の今日のログを、同じキーで `logs/` へ置く。取り込みが失敗しても動かす(`trigger_rule=all_done`)。同じキーは上書きだが、取り込みのたびに `batch_id` が変わるので、流し直すと別の `batch_id` のフォルダが増える(実行ごとのログが残る)。
 
 | 項目 | 必須 | 意味 | 例 |
 |---|---|---|---|
