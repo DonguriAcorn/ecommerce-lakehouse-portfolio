@@ -1,0 +1,25 @@
+# dim_date の荷札(meta / tags)、説明(セマンティックレイヤー Lv1)、品質検査(data_tests)
+version: 2
+
+models:
+  - name: dim_date
+    description: "日付の表。1行 = 1日。月別・曜日別の集計の見出しに使う"
+    meta:
+      owner: data-eng
+      update_frequency: daily
+    config:
+      tags: [gold, dimension]
+    columns:
+      - name: date_key
+        description: "日付そのもの。主キー。fact の purchase_date とつなぐ"
+        data_tests: [unique, not_null]
+      - name: year
+        description: "年"
+      - name: month
+        description: "月(1〜12)"
+      - name: year_month
+        description: "年月(例: 2017-11)。月別の集計の見出し"
+      - name: quarter
+        description: "四半期(1〜4)"
+      - name: day_of_week
+        description: "曜日(1 = 月曜 … 7 = 日曜)"

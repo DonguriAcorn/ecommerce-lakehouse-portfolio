@@ -21,7 +21,7 @@ latest_review as (                                           -- 注文ごとの�
 select
     o.order_id,                                              -- 注文の ID(主キー)
     o.customer_id,                                           -- 注文ごとの顧客 ID
-    c.customer_unique_id,                                    -- 本人の ID(リピートの判定に使う)
+    {{ pii_hash('c.customer_unique_id') }} as customer_unique_id,  -- 本人の ID のハッシュ(リピートの判定に使う)
     d.customer_sk,                                           -- その注文の時点の、顧客の期間の行
     cast(o.order_purchase_timestamp as date) as purchase_date,   -- 購入日(dim_date とつなぐ)
     o.order_status,                                          -- 注文の状態
@@ -33,7 +33,7 @@ from {{ ref('orders_from_events') }} as o
 join {{ ref('customers') }} as c
     on o.customer_id = c.customer_id
 join {{ ref('dim_customer') }} as d                          -- 購入日時が入る期間の1行を引く
-    on c.customer_unique_id = d.customer_unique_id
+    on {{ pii_hash('c.customer_unique_id') }} = d.customer_unique_id   -- 両側とも同じハッシュで結ぶ(dim_customer の側はハッシュ済み)
    and o.order_purchase_timestamp >= d.valid_from            -- 期間の始まり(含む)
    and (d.valid_to is null or o.order_purchase_timestamp < d.valid_to)  -- 期間の終わり(含まない)
 left join items as i                                         -- 明細のない注文を落とさない

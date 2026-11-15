@@ -1,0 +1,18 @@
+# dim_product の荷札(meta / tags)、説明(セマンティックレイヤー Lv1)、品質検査(data_tests)
+version: 2
+
+models:
+  - name: dim_product
+    description: "商品の表。1行 = 1商品。カテゴリ名は、英訳 → 元の名前 → unknown の順で決める"
+    meta:
+      owner: data-eng
+      update_frequency: daily
+    config:
+      tags: [gold, dimension]
+    columns:
+      - name: product_id
+        description: "商品の ID。主キー"
+        data_tests: [unique, not_null]
+      - name: category_name
+        description: "カテゴリ名(英語)。英訳がなければ元の名前、どちらもなければ unknown(商品 610 件)"
+        data_tests: [not_null]               # 空は unknown に置き換えているので、空は出ないはず

@@ -1,0 +1,39 @@
+# dim_customer の荷札(meta / tags)、説明(セマンティックレイヤー Lv1)、品質検査(data_tests)
+version: 2
+
+models:
+  - name: dim_customer                       # dim_customer.sql のモデルを指す
+    description: "顧客の表(SCD2)。1行 = 本人の、州と郵便番号が同じだった期間。引っ越した人は期間ごとに複数行になる"
+    meta:                                    # 表の荷札
+      owner: data-eng                        # 持ち主(役割の名前。個人名は出さない)
+      update_frequency: daily                # 更新の頻度(Airflow が毎日流す)
+    config:
+      tags: [gold, dimension]                # 検索用のシール(dbt build --select tag:gold)
+    columns:
+      - name: customer_sk
+        description: "代理キー。本人 + 期間の始まりから作る(毎回同じ値)。主キー"
+        data_tests: [unique, not_null]       # 重複なし・空なし(主キーの証拠)
+      - name: customer_unique_id
+        description: "本人の ID のハッシュ(salt つき SHA-256)。同じ人の複数の期間をまとめる。元の ID には戻せない。個人情報の候補"
+        meta: {pii: true}                    # 本人を指す ID。ハッシュ化の対象
+        data_tests: [not_null]
+      - name: customer_state
+        description: "州。この期間の値"
+      - name: customer_zip_code_prefix
+        description: "郵便番号の先頭3桁(先頭の 0 を保つため文字列)。個人を特定しにくくするため、5桁から丸めた。この期間の値。個人情報の候補"
+        meta: {pii: true}                    # 郵便番号の先頭5桁。住所系の印
+      - name: customer_city
+        description: "市。履歴は持たず、本人の最新の注文の値"
+      - name: valid_from
+        description: "この住所になった最初の購入日時"
+        data_tests: [not_null]
+      - name: valid_to
+        description: "この期間の終わり(次の期間の始まり)。最後の期間は空"
+      - name: is_current
+        description: "いまの住所か。最後の期間だけ true"
+        data_tests:
+          - not_null
+          - accepted_values:                 # true / false のどちらかだけ
+              arguments:
+                values: [true, false]
+                quote: false                 # 真偽値なので、引用符で囲まない

@@ -1,0 +1,56 @@
+# fact_orders の荷札(meta / tags)、説明(セマンティックレイヤー Lv1)、品質検査(data_tests)
+version: 2
+
+models:
+  - name: fact_orders
+    description: "注文の事実テーブル。1行 = 1注文(99,441 行)。売上や件数は is_counted が true の行だけで集計する"
+    meta:
+      owner: data-eng
+      update_frequency: daily
+    config:
+      tags: [gold, fact]                     # 事実テーブルのシール
+    columns:
+      - name: order_id
+        description: "注文の ID。主キー"
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: "注文ごとの顧客 ID。同じ人でも注文ごとに変わる"
+      - name: customer_unique_id
+        description: "本人の ID のハッシュ(salt つき SHA-256。dim_customer と同じ値)。同じ人の注文をまとめる(リピートの判定)のに使う。個人情報の候補"
+        meta: {pii: true}                    # dim_customer と同じ列なので、同じ印を付ける
+      - name: customer_sk
+        description: "その注文の時点の顧客の行(dim_customer の代理キー)。引っ越し前後で別の行になる"
+        data_tests:
+          - not_null                         # 紐づけ漏れがない
+          - relationships:                   # この値は、必ず dim_customer にある
+              arguments:
+                to: ref('dim_customer')
+                field: customer_sk
+      - name: purchase_date
+        description: "購入日。dim_date の date_key とつなぐ"
+        data_tests:
+          - not_null
+          - relationships:                   # この日付は、必ず dim_date にある
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: order_status
+        description: "注文の状態(delivered、shipped、canceled など)"
+        data_tests:
+          - accepted_values:                 # 元データにある8種類だけ。新しい状態が届いたら気づける
+              arguments:
+                values: [delivered, shipped, canceled, unavailable, invoiced, processing, created, approved]
+      - name: is_counted
+        description: "売上に数えるか。canceled と unavailable は false。売上の集計は true の行だけにする"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+      - name: item_count
+        description: "注文に含まれる明細の数。明細がない注文は 0"
+      - name: order_amount
+        description: "注文の売上。明細の商品代金 + 送料の合計。明細がない注文は 0"
+      - name: review_score
+        description: "最後に答えたレビューの星(1〜5)。レビューのない注文は空"

@@ -61,9 +61,9 @@ select
     to_hex(md5(to_utf8(                                      -- 代理キー: 本人 + 期間の始まりから作る(毎回同じ値)
         p.customer_unique_id || '|' || cast(p.valid_from as varchar)
     ))) as customer_sk,
-    p.customer_unique_id,
+    {{ pii_hash('p.customer_unique_id') }} as customer_unique_id,  -- 出力だけハッシュにする(customer_sk は上で元の ID から作るので変わらない)
     p.customer_state,
-    p.customer_zip_code_prefix,
+    substr(p.customer_zip_code_prefix, 1, 3) as customer_zip_code_prefix,  -- 先頭3桁に丸める(5桁より戻しにくくする)
     l.customer_city,
     p.valid_from,                                            -- この住所になった最初の購入日時
     lead(p.valid_from) over (                                -- 次の期間の始まり = この期間の終わり
