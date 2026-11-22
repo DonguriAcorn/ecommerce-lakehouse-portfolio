@@ -9,17 +9,25 @@ models:
       update_frequency: daily
     config:
       tags: [gold, dimension]
+      contract:
+        enforced: true                     # 列の名前・順番・型が SQL の結果と違えば、表を作る前に止める
     columns:
       - name: date_key
+        data_type: timestamp               # SQL は date を返すが、Athena は TIMESTAMP と報告する(契約はこの報告と比べる)
         description: "日付そのもの。主キー。fact の purchase_date とつなぐ"
         data_tests: [unique, not_null]
       - name: year
+        data_type: bigint
         description: "年"
       - name: month
+        data_type: bigint
         description: "月(1〜12)"
       - name: year_month
+        data_type: varchar
         description: "年月(例: 2017-11)。月別の集計の見出し"
       - name: quarter
+        data_type: bigint
         description: "四半期(1〜4)"
       - name: day_of_week
+        data_type: bigint
         description: "曜日(1 = 月曜 … 7 = 日曜)"

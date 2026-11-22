@@ -9,16 +9,22 @@ models:
       update_frequency: daily
     config:
       tags: [gold, fact]                     # 事実テーブルのシール
+      contract:
+        enforced: true                     # 列の名前・順番・型が SQL の結果と違えば、表を作る前に止める
     columns:
       - name: order_id
+        data_type: varchar
         description: "注文の ID。主キー"
         data_tests: [unique, not_null]
       - name: customer_id
+        data_type: varchar
         description: "注文ごとの顧客 ID。同じ人でも注文ごとに変わる"
       - name: customer_unique_id
+        data_type: varchar
         description: "本人の ID のハッシュ(salt つき SHA-256。dim_customer と同じ値)。同じ人の注文をまとめる(リピートの判定)のに使う。個人情報の候補"
         meta: {pii: true}                    # dim_customer と同じ列なので、同じ印を付ける
       - name: customer_sk
+        data_type: varchar
         description: "その注文の時点の顧客の行(dim_customer の代理キー)。引っ越し前後で別の行になる"
         data_tests:
           - not_null                         # 紐づけ漏れがない
@@ -27,6 +33,7 @@ models:
                 to: ref('dim_customer')
                 field: customer_sk
       - name: purchase_date
+        data_type: date
         description: "購入日。dim_date の date_key とつなぐ"
         data_tests:
           - not_null
@@ -35,12 +42,14 @@ models:
                 to: ref('dim_date')
                 field: date_key
       - name: order_status
+        data_type: varchar
         description: "注文の状態(delivered、shipped、canceled など)"
         data_tests:
           - accepted_values:                 # 元データにある8種類だけ。新しい状態が届いたら気づける
               arguments:
                 values: [delivered, shipped, canceled, unavailable, invoiced, processing, created, approved]
       - name: is_counted
+        data_type: boolean
         description: "売上に数えるか。canceled と unavailable は false。売上の集計は true の行だけにする"
         data_tests:
           - not_null
@@ -49,8 +58,11 @@ models:
                 values: [true, false]
                 quote: false
       - name: item_count
+        data_type: bigint
         description: "注文に含まれる明細の数。明細がない注文は 0"
       - name: order_amount
+        data_type: decimal(38,2)
         description: "注文の売上。明細の商品代金 + 送料の合計。明細がない注文は 0"
       - name: review_score
+        data_type: integer
         description: "最後に答えたレビューの星(1〜5)。レビューのない注文は空"

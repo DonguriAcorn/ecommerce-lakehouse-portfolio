@@ -9,27 +9,37 @@ models:
       update_frequency: daily                # 更新の頻度(Airflow が毎日流す)
     config:
       tags: [gold, dimension]                # 検索用のシール(dbt build --select tag:gold)
+      contract:
+        enforced: true                     # 列の名前・順番・型が SQL の結果と違えば、表を作る前に止める
     columns:
       - name: customer_sk
+        data_type: varchar
         description: "代理キー。本人 + 期間の始まりから作る(毎回同じ値)。主キー"
         data_tests: [unique, not_null]       # 重複なし・空なし(主キーの証拠)
       - name: customer_unique_id
+        data_type: varchar
         description: "本人の ID のハッシュ(salt つき SHA-256)。同じ人の複数の期間をまとめる。元の ID には戻せない。個人情報の候補"
         meta: {pii: true}                    # 本人を指す ID。ハッシュ化の対象
         data_tests: [not_null]
       - name: customer_state
+        data_type: varchar
         description: "州。この期間の値"
       - name: customer_zip_code_prefix
+        data_type: varchar
         description: "郵便番号の先頭3桁(先頭の 0 を保つため文字列)。個人を特定しにくくするため、5桁から丸めた。この期間の値。個人情報の候補"
         meta: {pii: true}                    # 郵便番号の先頭5桁。住所系の印
       - name: customer_city
+        data_type: varchar
         description: "市。履歴は持たず、本人の最新の注文の値"
       - name: valid_from
+        data_type: timestamp
         description: "この住所になった最初の購入日時"
         data_tests: [not_null]
       - name: valid_to
+        data_type: timestamp
         description: "この期間の終わり(次の期間の始まり)。最後の期間は空"
       - name: is_current
+        data_type: boolean
         description: "いまの住所か。最後の期間だけ true"
         data_tests:
           - not_null

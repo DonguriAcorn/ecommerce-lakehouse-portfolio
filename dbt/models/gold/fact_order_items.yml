@@ -9,18 +9,23 @@ models:
       update_frequency: daily
     config:
       tags: [gold, fact]
+      contract:
+        enforced: true                     # 列の名前・順番・型が SQL の結果と違えば、表を作る前に止める
     data_tests:                              # 表全体にかける条件
       - unique_combination:                  # 自作のテスト(tests/generic/unique_combination.sql)
           arguments:
             columns: ["order_id", "order_item_id"]   # この2列の組が重複しない
     columns:
       - name: order_id
+        data_type: varchar
         description: "注文の ID。order_item_id と合わせて主キー"
         data_tests: [not_null]
       - name: order_item_id
+        data_type: integer
         description: "注文の中の明細の番号。order_id と合わせて主キー"
         data_tests: [not_null]
       - name: product_id
+        data_type: varchar
         description: "商品の ID。dim_product とつなぐ"
         data_tests:
           - relationships:                   # この商品は、必ず dim_product にある
@@ -28,8 +33,10 @@ models:
                 to: ref('dim_product')
                 field: product_id
       - name: seller_id
+        data_type: varchar
         description: "出品者の ID。キーとして持つだけ(出品者の表は作らない)"
       - name: customer_sk
+        data_type: varchar
         description: "注文の時点の顧客の行。dim_customer とつなぐ"
         data_tests:
           - not_null
@@ -38,6 +45,7 @@ models:
                 to: ref('dim_customer')
                 field: customer_sk
       - name: purchase_date
+        data_type: date
         description: "購入日。dim_date とつなぐ"
         data_tests:
           - not_null
@@ -46,8 +54,10 @@ models:
                 to: ref('dim_date')
                 field: date_key
       - name: order_status
+        data_type: varchar
         description: "注文の状態"
       - name: is_counted
+        data_type: boolean
         description: "売上に数えるか。canceled と unavailable は false。売上の集計は true の行だけにする"
         data_tests:
           - not_null
@@ -56,8 +66,11 @@ models:
                 values: [true, false]
                 quote: false
       - name: price
+        data_type: decimal(10,2)
         description: "商品代金"
       - name: freight_value
+        data_type: decimal(10,2)
         description: "送料"
       - name: item_amount
+        data_type: decimal(11,2)
         description: "明細の売上(商品代金 + 送料)"

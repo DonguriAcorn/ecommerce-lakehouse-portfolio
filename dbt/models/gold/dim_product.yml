@@ -9,10 +9,14 @@ models:
       update_frequency: daily
     config:
       tags: [gold, dimension]
+      contract:
+        enforced: true                     # 列の名前・順番・型が SQL の結果と違えば、表を作る前に止める
     columns:
       - name: product_id
+        data_type: varchar
         description: "商品の ID。主キー"
         data_tests: [unique, not_null]
       - name: category_name
+        data_type: varchar
         description: "カテゴリ名(英語)。英訳がなければ元の名前、どちらもなければ unknown(商品 610 件)"
         data_tests: [not_null]               # 空は unknown に置き換えているので、空は出ないはず
