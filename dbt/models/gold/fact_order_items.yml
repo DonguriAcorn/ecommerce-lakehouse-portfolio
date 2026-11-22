@@ -73,4 +73,4 @@ models:
         description: "送料"
       - name: item_amount
         data_type: decimal(11,2)
-        description: "明細の売上(商品代金 + 送料)"
+        description: "明細の売上(商品代金 + 送料)。{{ doc('gmv') }}"

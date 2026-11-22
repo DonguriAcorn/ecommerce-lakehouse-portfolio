@@ -14,14 +14,14 @@ models:
     columns:
       - name: order_id
         data_type: varchar
-        description: "注文の ID。主キー"
+        description: "注文の ID。主キー。{{ doc('order_count') }}"
         data_tests: [unique, not_null]
       - name: customer_id
         data_type: varchar
         description: "注文ごとの顧客 ID。同じ人でも注文ごとに変わる"
       - name: customer_unique_id
         data_type: varchar
-        description: "本人の ID のハッシュ(salt つき SHA-256。dim_customer と同じ値)。同じ人の注文をまとめる(リピートの判定)のに使う。個人情報の候補"
+        description: "本人の ID のハッシュ(salt つき SHA-256。dim_customer と同じ値)。同じ人の注文をまとめる(リピートの判定)のに使う。個人情報の候補。{{ doc('repeat_rate') }}"
         meta: {pii: true}                    # dim_customer と同じ列なので、同じ印を付ける
       - name: customer_sk
         data_type: varchar
@@ -62,7 +62,7 @@ models:
         description: "注文に含まれる明細の数。明細がない注文は 0"
       - name: order_amount
         data_type: decimal(38,2)
-        description: "注文の売上。明細の商品代金 + 送料の合計。明細がない注文は 0"
+        description: "注文の売上。明細の商品代金 + 送料の合計。明細がない注文は 0。{{ doc('gmv') }} {{ doc('avg_order_amount') }}"
       - name: review_score
         data_type: integer
         description: "最後に答えたレビューの星(1〜5)。レビューのない注文は空"
