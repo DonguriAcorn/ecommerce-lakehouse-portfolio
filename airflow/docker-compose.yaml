@@ -35,6 +35,8 @@ x-airflow-common: &airflow-common
     AWS_EC2_METADATA_DISABLED: "true"
     # 上げ先のバケット名(アカウント ID を含むので .env から読む)。upload_raw と dbt が使う
     LAKE_BUCKET: ${LAKE_BUCKET:?.env に LAKE_BUCKET がない}
+    # 個人情報のハッシュに混ぜる salt(dbt のマクロ pii_hash が読む)。未設定なら起動時に止める。値は .env にだけ置く
+    PII_SALT: ${PII_SALT:?.env に PII_SALT がない}
   volumes:
     # DAG のファイル(手元で書くと、すぐコンテナに見える)
     - ./dags:/opt/airflow/dags
