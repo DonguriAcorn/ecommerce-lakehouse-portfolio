@@ -1,6 +1,13 @@
-# コミットの前に、秘密(キー、トークンなど)が入っていないかを gitleaks で確かめる
+# コミットの前に、秘密(キー、トークンなど)が入っていないかを gitleaks で確かめ、コードの書き方を ruff で確かめる
 repos:
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
       - id: gitleaks
+  # Python の書き方の検査(pyproject.toml の [tool.ruff] の設定をそのまま使う)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      # 直せる違反(import の並び順など)は --fix で自動で直す
+      - id: ruff-check
+        args: [--fix]
