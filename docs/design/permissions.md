@@ -1,23 +1,23 @@
 # 権限設計表
 
 - 作成日: 2026-10-22
-- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つ(plan 用、CI の dbt 用、prod の deployer)は、フェーズ4で作る(実装前)。reader は作らない(2026-11-14)
+- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つ(plan 用、CI の dbt 用、prod の deployer)は、フェーズ4で terraform/global に作る(設計は ADR 0017。実装前)。reader は作らない(2026-11-14)
 
 ## 方針
 
 - 各ロールは、その処理に必要な権限だけを持つ(最小権限)。
 - 人のスイッチロールは後回しにする。実務では、環境ごとに AWS アカウントを分けたときに使う(ADR に書く)。
-- 環境(dev / prod の2つ。test は作らない)ごとに、同じ形のロールを作る。名前は `ecom-<環境>-<役割>` とする。CI のロールは環境をまたぐので、例外として `ecom-ci-<役割>` とする(名前は仮。フェーズ4で決める)。
+- 環境(dev / prod の2つ。test は作らない)ごとに、同じ形のロールを作る。名前は `ecom-<環境>-<役割>` とする。CI のロールは環境をまたぐので、例外として `ecom-ci-<役割>` とする(2026-11-26 に確定。ADR 0017)。
 
 ## ロール一覧
 
 | ロール | 使う処理 | 引き受けられる相手(信頼ポリシー) |
 |---|---|---|
-| `ecom-dev-ingest` | リプレイと、Raw への取り込み | `portfolio-admin`(ローカルの Airflow や手元の実行) |
-| `ecom-dev-transform` | dbt と Athena による Silver、Gold の作成 | `portfolio-admin`(のちに GitHub Actions も追加) |
-| `ecom-ci-plan`(仮) | PR の `terraform plan`。状態ファイルと各リソースの読み取りだけ | GitHub の OIDC(PR 用の `sub`) |
-| `ecom-ci-dbt`(仮) | PR の `dbt build`。`ecom_ci` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ | GitHub の OIDC(PR 用の `sub`) |
-| `ecom-prod-deployer` | main のあと、手動承認を経た prod への Terraform と dbt の実行 | GitHub の OIDC(`sub` は GitHub Environments の `prod`) |
+| `ecom-<環境>-ingest` | リプレイと、Raw への取り込み | `portfolio-admin`(ローカルの Airflow や手元の実行) |
+| `ecom-<環境>-transform` | dbt と Athena による Silver、Gold の作成 | `portfolio-admin`。prod だけ、GitHub の OIDC(`sub` は `environment:prod`)も追加(main のあとの prod の dbt) |
+| `ecom-ci-plan` | PR の `terraform plan`(dev、prod、global。`-lock=false`)。使うサービスの Describe / Get / List と、状態ファイルの読み取りだけ | GitHub の OIDC(PR 用の `sub`) |
+| `ecom-ci-dbt` | PR の `dbt build`。`ecom_ci` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ | GitHub の OIDC(PR 用の `sub`) |
+| `ecom-prod-deployer` | main のあと、手動承認を経た prod への Terraform の実行(dbt は transform が流す) | GitHub の OIDC(`sub` は GitHub Environments の `prod`) |
 
 - reader は作らない(アプリは Parquet を読むだけで AWS に接続しないため。要るときはフェーズ9で足す。2026-11-14)。
 - deployer は prod 専用の1つだけにする。dev は手元の `portfolio-admin` のまま。
@@ -58,7 +58,8 @@ prod の deployer は、状態ファイル用のバケットのうち `envs/prod
 
 - `primary` の workgroup は使わせない。Athena の権限は、環境ごとの workgroup だけに限定する。
 - Athena は、実行した人(ロール)の権限で S3 を読み書きする。そのため、transform には、Athena の権限に加えて、S3 の権限も必要である。
-- IAM を操作する権限は、prod の deployer だけに限定し、対象を `ecom-prod-` で始まる名前に絞る(`ecom-dev-*` は触れない。`ecom-` だけの絞り方では、同じアカウントの dev も触れてしまうため)。権限境界(permissions boundary)を付けるかは、フェーズ4の ADR で決める。
+- IAM を操作する権限は、prod の deployer だけに限定し、対象を `ecom-prod-` で始まる名前に絞る(`ecom-dev-*` は触れない。`ecom-` だけの絞り方では、同じアカウントの dev も触れてしまうため)。さらに権限境界 `ecom-prod-boundary` を使い、deployer は枠の付いたロールしか作れず、枠と自分自身は変えられない(ADR 0017)。
+- CI のロールと権限境界は terraform/global に置き、CI が自分の権限を書き換えられないようにする(ADR 0017)。
 - OIDC の `sub` で、PR 用と prod 用を分ける。`ecom-ci-plan` と `ecom-ci-dbt` は PR 用の `sub` だけを許可し、prod の deployer は GitHub Environments の `prod` の `sub` だけを許可する(PR 用の `sub` は許可しない)。これで、承認を通らないジョブは prod のロールを借りられない。
 - logs/ と quarantine/ は「置」にする。記録は、あとから書き換えたり消したりできないほうが、調査の証拠として信用できる。消すのは、S3 のライフサイクル(logs/ は 90日、quarantine/ は 30日)に任せる([error-handling.md](error-handling.md))。
 - アップロードは `aws s3 sync` で行う。sync は、送る先にすでにあるファイルの一覧を見るので、ingest には logs/ と quarantine/ の一覧の権限(`s3:ListBucket`)も要る。`--delete` は使わない(削除の権限がないため)。
