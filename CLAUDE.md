@@ -43,11 +43,11 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 
 ## リポジトリの構成
 - .claude: settings.json(Git に入る allow / ask / deny と hook の登録)、hooks(guard-bash.sh: 危ない Bash を止める)、skills(session-start、session-end、tf-plan)、agents(plan-critic、モデルは sonnet)
-- .pre-commit-config.yaml: コミットの前の gitleaks(`uv run pre-commit install` は、マシンごとに1回)
+- .pre-commit-config.yaml: コミットの前の gitleaks と ruff-check(`--fix` つき。ruff-format は入れない。版は uv.lock と同じ。`uv run pre-commit install` は、マシンごとに1回)
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/global: アカウント共通のリソース(budgets.tf、github_oidc.tf。状態は S3 の global/terraform.tfstate)
 - terraform/modules/lakehouse_env: 環境ごとの定義(s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf、variables.tf)
-- terraform/envs/dev: main.tf(provider、backend、モジュールの呼び出し)。prod は、フェーズ4で作る
+- terraform/envs/dev、terraform/envs/prod: main.tf(provider、backend、モジュールの呼び出し)。prod は dev の写しで、違いは state の key、タグ、`env` の3点(2026-11-25 に作った。状態は S3 の envs/prod/terraform.tfstate)
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
 - simulator: 業務システムの代わり(パイプラインではない)。make_source_events.py(`--table` で表を選び、data/source/<表>/ に届くファイルを1回だけ作る。遅延は orders だけ)、orders_events.py(orders の CSV → 出来事の表)、table_sources.py(ほかの6表の CSV → 届く日を付けた表)
 - ingestion: パイプラインの Python。run_ingest.py(`--table` と期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、schema.py(registry。7表の列と型・種類・期間。送る側との約束)、ingest_table.py(全表で共通の、読む・検証・型)、orders_checks.py(orders だけの追加の検証)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログと、1日ごとの結果)、upload_raw.py(`--date` の1日、または `--start` / `--end` の期間の Raw を boto3 で S3 へ上げる。Airflow のコンテナには aws CLI がない)、upload_logs.py(UTC の今日の run_date の取り込みログを S3 の logs/ へ上げる)、clean_logs.py(airflow/logs/ と data/logs/ の 90 日超を消す。既定は一覧だけ、`--delete` で消す)、iceberg_maintenance.py(Silver 7表を1表ずつ ALTER → OPTIMIZE → VACUUM。保存期間 7 日を毎回入れる)、dbt_failures.py(dbt の run_results.json から失敗だけを要約して出す)
@@ -69,6 +69,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - Python: uv、Python 3.12(pandas、pyarrow、boto3、pytest、ruff、ipykernel)。
 - スコープ(2026-11-14 に改訂): 必須はすべて入れ、推奨は選んで入れる。対象外は、セマンティックレイヤー Lv3、OpenLineage、IaC のセキュリティスキャン、障害注入、複数ステップ分析、専用のデータカタログ、CloudWatch に加えて、質問ログ、reader ロール、Runbook、為替 API、test 環境。フェーズ8(Snowflake)とフェーズ9(運用エージェント)は、v1.2 の後ろで任意。
 - 環境と CI(2026-11-14): 環境は dev と prod の2つ。同じアカウントでは test は名前だけの分離になるため、検証は PR の `ecom_ci`(1つだけ、並行する PR は禁止)と、prod への手動承認(plan の要約を見て承認)に集める。CI のロールは3つ(plan 用、CI の dbt 用、prod の deployer)。dev は手元の portfolio-admin のまま。prod のデータは全期間。理由は、フェーズ4で書く ADR を参照。
+- prod と ADR 0016(2026-11-25): 環境は dev と prod の2つで、ADR 0016 が 0001 の「3環境」を置き換えた(「名前で分ける」は有効)。prod は dev と同じモジュールで作った(21 リソース、データは空)。lake バケットの `prevent_destroy` は、モジュールに直接書いたので dev も保護される(`lifecycle` は変数にできないため)。AWS provider の版が dev(6.69.1)と prod(6.74.0)でずれていて、CI の plan 用ロールを作るときにそろえる(tasks.md の未決)。
 - orders のパイプライン(2026-11-03): Raw は出来事を1行ずつ並べた形(ADR 0010)。業務システムの代わり(simulator/)が data/source/ に届いた日ごとの JSON Lines を置き、パイプライン(ingestion/)はそれを検証して Raw に積むだけ。期間は 2016-09-04 〜 2018-10-18 の 775 日。Silver は dbt でイベントから「いまの状態」に畳む(作成中)。詳細は docs/design/orders-vertical-slice.md。
 - テーブル定義の管理: Bronze は外部テーブルで Terraform(bronze.tf)、Silver は dbt。理由は ADR 0003 と orders-vertical-slice.md を参照。bronze.tf は、7表を `local.bronze_tables` の一覧から for_each で作る(表を足すときは一覧に1件足す。列名は registry と同じ綴り。説明は日本語)(2026-11-07)。
 - handoff からの順番の変更(2026-10-30): dbt、ruff、pytest をフェーズ2に前倒しする。エラーの設計は Python の取り込みだけにし、dbt の失敗は Airflow の運用で扱う。
