@@ -23,7 +23,8 @@ locals {
 }
 
 # ---------- 信頼ポリシー: 誰がこのロールを借りられるか ----------
-data "aws_iam_policy_document" "ci_plan_trust" {
+# PR のジョブ用の信頼ポリシー。ecom-ci-plan と ecom-ci-dbt で共通に使う(sub の条件を1か所にするため)
+data "aws_iam_policy_document" "ci_pr_trust" {
   statement {
     effect = "Allow"
     # OIDC の証明書(Web ID トークン)と引き換えに、ロールを借りる操作
@@ -56,7 +57,7 @@ resource "aws_iam_role" "ci_plan" {
   name = "ecom-ci-plan"
   # IAM の説明欄は日本語を受け付けないので英語で書く
   description          = "GitHub Actions PR: terraform plan (read only). ADR 0017"
-  assume_role_policy   = data.aws_iam_policy_document.ci_plan_trust.json
+  assume_role_policy   = data.aws_iam_policy_document.ci_pr_trust.json
   max_session_duration = 3600 # 一時キーの期限は1時間(最短の既定値)
 }
 

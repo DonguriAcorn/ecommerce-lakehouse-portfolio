@@ -27,3 +27,17 @@ jobs:
       # 借りたロールの名前だけを表示する(ARN 全体はアカウント ID を含むので出さない)
       - name: 借りたロールの名前を表示する
         run: aws sts get-caller-identity --query Arn --output text | cut -d/ -f2
+
+  # ecom-ci-dbt も、PR のジョブから借りられることを確かめる(借りて名前を表示するだけ。dbt や AWS のデータには触らない)
+  assume-dbt-role:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ecom-ci-dbt を借りる
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecom-ci-dbt
+          aws-region: ap-northeast-1
+          mask-aws-account-id: true
+
+      - name: 借りたロールの名前を表示する
+        run: aws sts get-caller-identity --query Arn --output text | cut -d/ -f2
