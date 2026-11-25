@@ -1,7 +1,7 @@
 # 権限設計表
 
 - 作成日: 2026-10-22
-- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つのうち、plan 用(`ecom-ci-plan`)と CI の dbt 用(`ecom-ci-dbt`)は、terraform/global に作成済み(2026-11-26。設計は ADR 0017)。prod の deployer は実装前。reader は作らない(2026-11-14)
+- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つのうち、plan 用(`ecom-ci-plan`)、CI の dbt 用(`ecom-ci-dbt`)、prod の deployer(`ecom-prod-deployer`)と権限境界(`ecom-prod-boundary`)は、terraform/global に作成済み(2026-11-26。設計は ADR 0017)。reader は作らない(2026-11-14)
 
 ## 方針
 
