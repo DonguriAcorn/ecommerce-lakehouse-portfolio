@@ -6,6 +6,11 @@ locals {
 
 resource "aws_s3_bucket" "lake" {
   bucket = local.lake_bucket
+
+  # 実データの入ったバケットを、terraform destroy や定義の削除で消せないようにする
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "lake" {
