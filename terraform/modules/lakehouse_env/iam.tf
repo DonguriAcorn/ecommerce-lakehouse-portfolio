@@ -21,6 +21,49 @@ data "aws_iam_policy_document" "assume_by_admin" {
   }
 }
 
+# transform 用の信頼ポリシー: 管理者に加えて、OIDC の変数が渡されたときだけ GitHub Actions も借りられる
+data "aws_iam_policy_document" "assume_transform" {
+  # 管理者(手元の portfolio-admin)。ingest と同じ
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "AWS"
+      identifiers = [local.admin_user_arn]
+    }
+  }
+
+  # GitHub Actions(prod だけ。dev は変数が null なので、この statement は作られない)
+  dynamic "statement" {
+    for_each = var.transform_oidc_provider_arn == null ? [] : [1]
+
+    content {
+      effect  = "Allow"
+      actions = ["sts:AssumeRoleWithWebIdentity"]
+
+      principals {
+        type        = "Federated"
+        identifiers = [var.transform_oidc_provider_arn]
+      }
+
+      # 証明書の宛先が AWS の STS であること
+      condition {
+        test     = "StringEquals"
+        variable = "token.actions.githubusercontent.com:aud"
+        values   = ["sts.amazonaws.com"]
+      }
+
+      # 承認を通った環境のジョブだけ(完全一致。ワイルドカードは使わない)
+      condition {
+        test     = "StringEquals"
+        variable = "token.actions.githubusercontent.com:sub"
+        values   = [var.transform_oidc_sub]
+      }
+    }
+  }
+}
+
 # ---------- ingest ----------
 
 data "aws_iam_policy_document" "ingest" {
@@ -62,8 +105,9 @@ data "aws_iam_policy_document" "ingest" {
 }
 
 resource "aws_iam_role" "ingest" {
-  name               = "ecom-${var.env}-ingest"
-  assume_role_policy = data.aws_iam_policy_document.assume_by_admin.json
+  name                 = "ecom-${var.env}-ingest"
+  assume_role_policy   = data.aws_iam_policy_document.assume_by_admin.json
+  permissions_boundary = var.permissions_boundary # 権限の上限の枠(dev は null で枠なし)
 }
 
 resource "aws_iam_role_policy" "ingest" {
@@ -164,8 +208,9 @@ data "aws_iam_policy_document" "transform" {
 }
 
 resource "aws_iam_role" "transform" {
-  name               = "ecom-${var.env}-transform"
-  assume_role_policy = data.aws_iam_policy_document.assume_by_admin.json
+  name                 = "ecom-${var.env}-transform"
+  assume_role_policy   = data.aws_iam_policy_document.assume_transform.json
+  permissions_boundary = var.permissions_boundary # 権限の上限の枠(dev は null で枠なし)
 }
 
 resource "aws_iam_role_policy" "transform" {
