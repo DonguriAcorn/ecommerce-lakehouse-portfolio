@@ -4,9 +4,10 @@ variable "budget_alert_email" {
   sensitive   = true
 }
 
-# GitHub のリポジトリ名(<owner>/<repo>)。OIDC の sub の照合に使う(ADR 0017)
+# OIDC の sub に入るリポジトリの表記(<owner>@<owner_id>/<repo>@<repo_id>)(ADR 0017)
+# 番号は変わらない ID。同じ名前で作り直されたリポジトリに、なりすまされないようにする
 variable "github_repo" {
-  description = "GitHub のリポジトリ名(<owner>/<repo>)"
+  description = "OIDC の sub に入るリポジトリの表記(<owner>@<owner_id>/<repo>@<repo_id>)"
   type        = string
-  default     = "DonguriAcorn/ecommerce-lakehouse-portfolio"
+  default     = "DonguriAcorn@72342300/ecommerce-lakehouse-portfolio@1426844930"
 }

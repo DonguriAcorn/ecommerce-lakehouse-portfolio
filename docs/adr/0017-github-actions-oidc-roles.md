@@ -17,12 +17,12 @@
 
    | ロール | 使うジョブ | 借りられる `sub` |
    |---|---|---|
-   | `ecom-ci-plan` | PR の `terraform plan`(dev、prod、global) | `repo:<owner>/<repo>:pull_request` |
-   | `ecom-ci-dbt` | PR の `ecom_ci` での `dbt build` | `repo:<owner>/<repo>:pull_request` |
-   | `ecom-prod-deployer` | 承認を経た prod の `terraform apply` | `repo:<owner>/<repo>:environment:prod` |
+   | `ecom-ci-plan` | PR の `terraform plan`(dev、prod、global) | `repo:<owner>@<owner_id>/<repo>@<repo_id>:pull_request` |
+   | `ecom-ci-dbt` | PR の `ecom_ci` での `dbt build` | `repo:<owner>@<owner_id>/<repo>@<repo_id>:pull_request` |
+   | `ecom-prod-deployer` | 承認を経た prod の `terraform apply` | `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:prod` |
 
 3. prod の dbt は、deployer でなく、いまの `ecom-prod-transform` を OIDC で借りて流す。transform の信頼ポリシーに、`environment:prod` の `sub` を prod だけ足す。deployer は設定を変える役、transform はデータを書く役として分ける。
-4. 信頼ポリシーでは、`aud` が `sts.amazonaws.com` であることと、`sub` が上の値と完全に一致することを条件にする。ワイルドカード(`repo:<owner>/*` など)は使わない。書き込みのできるロール(`ecom-prod-deployer`、`ecom-prod-transform`)に、PR 用の `sub` は許可しない。
+4. 信頼ポリシーでは、`aud` が `sts.amazonaws.com` であることと、`sub` が上の値と完全に一致することを条件にする。ワイルドカード(`repo:<owner>/*` など)は使わない。書き込みのできるロール(`ecom-prod-deployer`、`ecom-prod-transform`)に、PR 用の `sub` は許可しない。`sub` のリポジトリは、名前に加えて変わらない番号(ID)で照合する(GitHub の証明書の形。同じ名前で作り直されたリポジトリに借りられないため)。
 5. 3つのロールは、すべて terraform/global に置く。global を apply するのは、手元の portfolio-admin だけである。
 6. `ecom-ci-plan` には、使っているサービス(S3、IAM、Glue、Athena、Budgets など)の Describe / Get / List だけを、自分で一覧にして許す。S3 の `GetObject` は、状態ファイルのバケットだけに許す。PR の plan は `-lock=false` で打ち、状態ファイルに書く権限を持たせない。
 7. `ecom-prod-deployer` には、権限境界(permissions boundary)を使う。
