@@ -12,3 +12,13 @@ ecom_lakehouse:
       s3_data_dir: "s3://{{ env_var('LAKE_BUCKET') }}/iceberg/"             # テーブルの実体の置き場(iceberg/ に固定)
       aws_profile_name: ecom-dev-transform # 使う AWS プロファイル
       threads: 4                           # 同時に流すクエリの数
+    prod:                                  # `--target prod` で選ぶ。名前は Gold の置き場(ecom_prod_gold)も決める
+      type: athena                         # 接続先は Athena
+      region_name: ap-northeast-1          # 東京リージョン
+      work_group: ecom-prod                # prod 用の workgroup(1 GiB 上限)
+      database: awsdatacatalog             # Glue Data Catalog の既定名
+      schema: ecom_prod_silver             # モデルを作る Glue DB(Silver、prod)
+      s3_staging_dir: "s3://{{ env_var('LAKE_BUCKET') }}/athena-results/"   # prod で流すときは LAKE_BUCKET を prod のバケットにする
+      s3_data_dir: "s3://{{ env_var('LAKE_BUCKET') }}/iceberg/"             # テーブルの実体の置き場
+      aws_profile_name: ecom-prod-transform # prod の transform ロール(dev のロールでは書けない)
+      threads: 4                           # 同時に流すクエリの数

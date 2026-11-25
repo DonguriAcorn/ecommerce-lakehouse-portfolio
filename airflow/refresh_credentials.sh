@@ -9,7 +9,7 @@ set -euo pipefail
 OUT_DIR="${HOME}/.ecom-airflow"
 OUT_FILE="${OUT_DIR}/credentials"
 # 借りるロールのプロファイル(手元の ~/.aws/config と同じ名前。dbt と ingestion はこの名前で探す)
-PROFILES=(ecom-dev-ingest ecom-dev-transform)
+PROFILES=(ecom-dev-ingest ecom-dev-transform ecom-prod-ingest ecom-prod-transform)
 
 # フォルダを作り、自分だけが入れるようにする(700)
 mkdir -p "${OUT_DIR}"
