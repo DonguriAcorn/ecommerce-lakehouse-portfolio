@@ -1,7 +1,7 @@
 # 権限設計表
 
 - 作成日: 2026-10-22
-- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つ(plan 用、CI の dbt 用、prod の deployer)は、フェーズ4で terraform/global に作る(設計は ADR 0017。実装前)。reader は作らない(2026-11-14)
+- 状態: ingest と transform は実装済み(terraform/modules/lakehouse_env/iam.tf)。CI のロール3つのうち、plan 用(`ecom-ci-plan`)と CI の dbt 用(`ecom-ci-dbt`)は、terraform/global に作成済み(2026-11-26。設計は ADR 0017)。prod の deployer は実装前。reader は作らない(2026-11-14)
 
 ## 方針
 
@@ -16,7 +16,7 @@
 | `ecom-<環境>-ingest` | リプレイと、Raw への取り込み | `portfolio-admin`(ローカルの Airflow や手元の実行) |
 | `ecom-<環境>-transform` | dbt と Athena による Silver、Gold の作成 | `portfolio-admin`。prod だけ、GitHub の OIDC(`sub` は `environment:prod`)も追加(main のあとの prod の dbt) |
 | `ecom-ci-plan` | PR の `terraform plan`(dev、prod、global。`-lock=false`)。使うサービスの Describe / Get / List と、状態ファイルの読み取りだけ | GitHub の OIDC(PR 用の `sub`) |
-| `ecom-ci-dbt` | PR の `dbt build`。`ecom_ci` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ | GitHub の OIDC(PR 用の `sub`) |
+| `ecom-ci-dbt` | PR の `dbt build`。練習用の Glue DB(`ecom_ci_silver` と `ecom_ci_gold`)と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ。workgroup は `ecom-ci` | GitHub の OIDC(PR 用の `sub`) |
 | `ecom-prod-deployer` | main のあと、手動承認を経た prod への Terraform の実行(dbt は transform が流す) | GitHub の OIDC(`sub` は GitHub Environments の `prod`) |
 
 - reader は作らない(アプリは Parquet を読むだけで AWS に接続しないため。要るときはフェーズ9で足す。2026-11-14)。
@@ -52,6 +52,7 @@ prod の deployer は、状態ファイル用のバケットのうち `envs/prod
 |---|---|---|
 | ingest | — | — |
 | transform | `ecom-dev` の workgroup だけ実行できる | bronze、silver、gold の3つのテーブル定義を、読み書き(dbt-athena が古いテーブルの版を整理するため、`GetTableVersions` と `DeleteTableVersion` も含む。2026-11-03 追加) |
+| ci-dbt | `ecom-ci` の workgroup だけ実行できる(結果は `athena-results/ci/`) | `ecom_ci_silver` と `ecom_ci_gold` のテーブルを読み書き(DB は作れない)。dev の Bronze は読むだけ(S3 の `raw/` も読むだけ) |
 | prod の deployer | workgroup の管理(prod の分だけ) | データベースの管理(prod の分だけ) |
 
 ## 設計の考え方

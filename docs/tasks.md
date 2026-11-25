@@ -154,7 +154,7 @@ tasks.md は更新済み。次は、差分を示して承認を得てから1つ�
 - [x] prod に全期間のデータを入れる〔追加〕(窓を分けて流し、窓の前に一時キーを発行し直す。窓の大きさは実測で決める。prod 用のロールとプロファイルの切り替えを決める)(2026-11-26: 120 日の窓を7回流して全部成功。Silver 7表と Gold 5モデルが dev と差分 0。接続先は `--target prod`、DAG は `env` で切り替え。`silver_freshness` は backfill の dbt_test だけ除外)
 - [ ] GitHub Actions から OIDC で接続: ロール3つ〔必須〕(dev は手元の portfolio-admin のまま) ← 今ここ
   - plan 用: 状態ファイルと Describe / Get の読み取りだけ(PR 用の `sub`)
-  - CI の dbt 用: `ecom_ci` の Glue DB と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ(PR 用の `sub`)
+  - CI の dbt 用: 練習用の Glue DB(`ecom_ci_silver` と `ecom_ci_gold`)と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ(PR 用の `sub`)
   - prod の deployer: OIDC の `sub` に GitHub Environments の `prod` を入れる。IAM は `ecom-prod-*` だけ。書き込み系のロールに PR 用の `sub` は許可しない
 - [ ] PR チェック(ruff、pytest、`terraform plan`、`ecom_ci` での `dbt build`)〔必須〕(`ecom_ci` は1つだけで、並行する PR は禁止。固定の小さなデータで流す。ブランチ保護で PR チェックを必須にする)
 - [ ] main へのマージで、手動承認のあと prod にデプロイ(GitHub Environments。承認画面に plan の要約を出し、保存した plan だけを apply する。dev への自動デプロイはしない)〔必須〕
@@ -238,7 +238,7 @@ tasks.md は更新済み。次は、差分を示して承認を得てから1つ�
   - マスタの型(日付なし): sellers、products、product_category_name_translation
   - customer_unique_id ごとに住所が変わったものが 252 件ある(SCD2 の材料)
 - Airflow: dbt は Airflow と別の venv で動かす。`_batch_id` に Airflow の run_id を渡す。メモリは約 4GB が必要。通知先はシークレットとして扱う。dbt の失敗は、`run_results.json` の要点を logs/ に書く(そのときに、transform ロールへ logs/ の書き込みを足す)。
-- CI 専用のロール: `ecom_ci` の Glue DB(1つだけ)と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ。`iceberg/ci/` のライフサイクル(例: 3日)で S3 の実データを消す。dbt の `generate_schema_name` と sources.yml の切り替えが要るかは、着手時に確かめる。
+- CI 専用のロール: 練習用の Glue DB(`ecom_ci_silver` と `ecom_ci_gold`)と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ。`iceberg/ci/` のライフサイクル(例: 3日)で S3 の実データを消す。dbt の `generate_schema_name` と sources.yml の切り替えが要るかは、着手時に確かめる。
 - sqlfluff: テンプレーターは jinja にして、Athena に接続しない。
 - export: 公開アプリに AWS の認証情報を持たせない(案: Git の例外のパス、GitHub Releases、ビルド時に取得)。書き出すロール、permissions.md の `export/` 列、ライフサイクルも決める。健康状態ページは、export のときに状態の要約も出す。
 - AI エージェント(2026-11-03、plan-critic 2回。3回目は未実施): 運用②の評価データ(合成ログかマスク済みの実ログか。保存前にマスクを通す)/ 実 LLM の評価をどこで回すか(手元か main の週次 CI。作者のキーを GitHub に置かない)/ マスクは AWS 由来の文字列だけにかけ、切り詰めの前に適用する(アナリストの数字は壊さない)/ ops-reader は読むプレフィックスを列挙し、Athena の専用 workgroup に合計スキャン上限を付ける / 出力に外部 URL を描画しない。reviews の本文は AI から見える列に入れない / 録画した応答の CI は「ハーネスの回帰テスト」と呼ぶ / 1質問あたりの最大ステップ数・トークン・1日の上限と、月の LLM 予算 / ADR 候補: 運用エージェントの③を実装しない理由
