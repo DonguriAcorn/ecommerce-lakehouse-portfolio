@@ -30,6 +30,11 @@
    - deployer が IAM のロールを作る・ポリシーを付けるときは、この枠が付いていることを条件にする。対象は `ecom-prod-*` の名前のロールだけにする。
    - deployer は、枠のポリシー自身、枠を外す操作、deployer 自身のロールを変えられない(明示の Deny)。
    - モジュール(lakehouse_env)に、権限境界の変数を1つ足す。dev は null(枠なし)のままにする。
+8. 練習用の場所(ADR 0016 などの「`ecom_ci`」)は、次の4つをまとめた呼び名とする。dbt の接続先の名前は `ci` にする。
+   - Glue DB: `ecom_ci_silver` と `ecom_ci_gold` の2つ。既存の命名 `ecom_<環境>_<層>` のままなので、`generate_schema_name` を変えずに、Gold が自動で `ecom_ci_gold` になる。Terraform で作り、ロールには DB を作る権限を持たせない。
+   - Athena の workgroup: `ecom-ci`(1 GiB 上限。結果は `athena-results/ci/` に固定)。dev の workgroup は借りない。
+   - S3: dev の lake バケットの `iceberg/ci/` と `athena-results/ci/`。書けるのはここだけで、`raw/` は読むだけ。
+   - 理由: PR の dbt が、dev や prod の本物のテーブルを作り直さないため。ロールの書ける範囲を、この4つに閉じるため。
 
 ## 理由
 
@@ -40,6 +45,7 @@
 - `-lock=false` にするのは、plan は何も変えないので、ロックがなくても壊れないためである。ロックを取らなければ、plan 用ロールを完全に読むだけにできる。
 - 権限境界を使うのは、IAM を書けるロールは、自分より強いロールを作れてしまうためである(例: `ecom-prod-transform` に管理者権限を付け、信頼ポリシーを書き換えて自分で借りる)。名前を `ecom-prod-*` に絞るだけでは、この抜け道は塞げない。枠があれば、作り直したロールも枠の外の権限を持てない。
 - prod の dbt を transform で流すのは、deployer がデータの読み書きを持たないようにするためである。deployer が漏れても、データは読まれない。transform が漏れても、設定は変えられない。
+- 練習用の場所に専用の workgroup を作るのは、結果の置き場と 1 GiB の上限を dev と分け、ロールが dev の workgroup を使えないようにするためである。
 
 ## あきらめたこと(弱い点)
 
