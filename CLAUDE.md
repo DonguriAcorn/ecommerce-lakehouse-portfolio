@@ -1,4 +1,4 @@
-# プロジェクトの引き継ぎメモ(更新: 2026-11-26)
+# プロジェクトの引き継ぎメモ(更新: 2026-11-27)
 
 ## 目的
 データエンジニアのポートフォリオ。EC データ(Olist)を、取り込み → 整形 → 集計 → Streamlit のダッシュボードと AI アナリストまで流す。要件、スコープ、フェーズ計画は docs/handoff.md(原本)を読む。タスク、進捗、現在の状態は docs/tasks.md を読む。
@@ -33,14 +33,14 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - .pre-commit-config.yaml: コミットの前の gitleaks と ruff-check(`--fix` つき。ruff-format は入れない。版は uv.lock と同じ。`uv run pre-commit install` は、マシンごとに1回)
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/global: アカウント共通のリソース(budgets.tf、github_oidc.tf、ci_plan.tf、ci_dbt.tf、prod_boundary.tf、prod_deployer.tf。状態は S3 の global/terraform.tfstate)
-- .github/workflows: oidc-check.yml(OIDC でロールを借りられるかの確認用。PR チェックのワークフローができたら消す)
+- .github/workflows: pr-check.yml(PR のチェック6つ: ruff、pytest、terraform plan の3か所、dbt build)
 - terraform/modules/lakehouse_env: 環境ごとの定義(s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf、variables.tf。variables.tf に `permissions_boundary` と `transform_oidc_*` を足した。dev は null)
 - terraform/envs/dev、terraform/envs/prod: main.tf(provider、backend、モジュールの呼び出し)。prod は dev の写しで、違いは state の key、タグ、`env` の3点(2026-11-25 に作った。状態は S3 の envs/prod/terraform.tfstate)
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
 - simulator: 業務システムの代わり(パイプラインではない)。make_source_events.py(`--table` で表を選び、data/source/<表>/ に届くファイルを1回だけ作る。遅延は orders だけ)、orders_events.py(orders の CSV → 出来事の表)、table_sources.py(ほかの6表の CSV → 届く日を付けた表)
 - ingestion: パイプラインの Python。run_ingest.py(`--table` と期間を指定して、届いたファイルを日付ごとに Raw へ書く実行役)、schema.py(registry。7表の列と型・種類・期間。送る側との約束)、ingest_table.py(全表で共通の、読む・検証・型)、orders_checks.py(orders だけの追加の検証)、raw_writer.py(監査カラムと Raw の書き出し)、quarantine.py(IngestStop と隔離の書き出し)、run_log.py(JSON Lines のログと、1日ごとの結果)、upload_raw.py(`--date` の1日、または `--start` / `--end` の期間の Raw を boto3 で S3 へ上げる。Airflow のコンテナには aws CLI がない)、upload_logs.py(UTC の今日の run_date の取り込みログを S3 の logs/ へ上げる)、clean_logs.py(airflow/logs/ と data/logs/ の 90 日超を消す。既定は一覧だけ、`--delete` で消す)、iceberg_maintenance.py(Silver 7表を1表ずつ ALTER → OPTIMIZE → VACUUM。保存期間 7 日を毎回入れる)、dbt_failures.py(dbt の run_results.json から失敗だけを要約して出す)
-- dbt: dbt_project.yml、profiles.yml(接続先は dev と prod。`--target prod` で切り替え。バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze 7表)。Silver のモデルは models/silver/ に置く(orders_from_events と6表。6表は macros/silver_latest.sql を呼ぶ)。Gold は models/gold/(dim_date、dim_product、dim_customer、fact_orders、fact_order_items。`table` で毎回作り直し)。置き場所は macros/generate_schema_name.sql(`+schema: gold` が `ecom_<環境>_gold` になる)。2列のキーのテストは tests/generic/unique_combination.sql。Gold の YAML は表ごと(dim_customer.yml など)。tests/ には単発のテスト(gold_amount_reconcile.sql、silver_freshness.sql)。macros/pii_hash.sql は、環境変数 `PII_SALT` が必須(dbt を動かすターミナルでは `LAKE_BUCKET` と一緒に `export` する)
-- .github/workflows: oidc-check.yml(OIDC の確認用。PR チェックができたら消す)
+- dbt: dbt_project.yml、profiles.yml(接続先は dev、prod、ci(PR チェック用)。`--target prod` で切り替え。バケット名は環境変数 `LAKE_BUCKET`。`--project-dir dbt --profiles-dir dbt` で使う)、models/sources.yml(Bronze 7表)。Silver のモデルは models/silver/ に置く(orders_from_events と6表。6表は macros/silver_latest.sql を呼ぶ)。Gold は models/gold/(dim_date、dim_product、dim_customer、fact_orders、fact_order_items。`table` で毎回作り直し)。置き場所は macros/generate_schema_name.sql(`+schema: gold` が `ecom_<環境>_gold` になる)。2列のキーのテストは tests/generic/unique_combination.sql。Gold の YAML は表ごと(dim_customer.yml など)。tests/ には単発のテスト(gold_amount_reconcile.sql、silver_freshness.sql)。macros/pii_hash.sql は、環境変数 `PII_SALT` が必須(dbt を動かすターミナルでは `LAKE_BUCKET` と一緒に `export` する)
+- .github/workflows: pr-check.yml(PR のチェック6つ。上の同名の行と同じ)
 - docs: handoff.md(要件とスコープの原本)、tasks.md(タスクと進捗)
 - docs/design: gold-design.md(Gold の画面ごとの設計。列、粒度、SCD2)、iceberg-maintenance.md(Iceberg の整理の手順と結果)、orders-vertical-slice.md(orders のパイプライン設計)、orders-data-profile.md(元データと出来事の作り方)、replay-tables.md(7表のリプレイの仕様)、permissions.md、error-handling.md、secrets.md
 - docs/adr: 設計判断の記録(0001〜0017。以降は、判断のたびに足す)
@@ -82,6 +82,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - PII のハッシュ化(2026-11-15): Gold の customer_unique_id は、salt つき SHA-256(`pii_hash`)。郵便番号は先頭3桁に丸める。salt は環境変数 `PII_SALT`(リポジトリに書かない)。customer_sk は元の ID から作る。生の ID は Silver に残る(Gold を外に見せる口にするため)。限界は、あとで docs/design に書く。
 - 鮮度チェック(2026-11-15): `silver_freshness` は、毎日届く3表(orders_from_events、order_items、reviews)だけを見る。`end_date` が渡されないときはスキップ。
 - prod のデータ(2026-11-26): dev と同じ全期間を、`olist_backfill` を `env=prod` にして、120 日の窓7回で入れた。dev と差分 0。切り替えは dbt の `--target`、AWS のプロファイル(`ecom-prod-ingest` / `ecom-prod-transform`)、バケット名の3つを `env` に連動させる。`PII_SALT` は dev と同じ値(dev と prod でハッシュが一致する)。`silver_freshness` は毎日の運用用で、過去の窓では誤って失敗するため、backfill の dbt_test では除外する。
+- PR チェック(2026-11-27): `pr-check.yml` の6つ(ruff、pytest、plan の global / dev / prod、dbt)。dbt は接続先 `ci` で、dev の Bronze の 2016-09-04〜06 を読み、`ecom_ci_silver` / `ecom_ci_gold` に作る(マスタが 09-04 にしか届かないため、この日を含める。`silver_freshness` は除外)。`ecom_ci` は `concurrency` のグループ `ecom-ci` で1つずつ。plan の `TF_VAR_budget_alert_email` はダミー値。main には ruleset `protect-main`(PR と必須チェック6つ。承認 0、strict なし。Enforcement を Active にしないと効かない)。main へは直接 push できず、docs だけの変更も PR が要る。`ecom-ci-plan` に `iam:ListPolicies`、`iam:ListOpenIDConnectProviders`、lake の `s3:ListBucket` を足した(ListBucket がないと、Terraform は「バケットが消えた」と見なして作り直す plan を出す)。plan のジョブの緑は、`No changes.` を見て初めて意味がある。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。届くファイルは data/source/、Raw は data/raw/(どちらも Git の管理外。simulator と run_ingest.py で作り直せる)。
