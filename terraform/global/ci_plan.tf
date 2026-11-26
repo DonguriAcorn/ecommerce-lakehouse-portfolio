@@ -52,12 +52,44 @@ data "aws_iam_policy_document" "ci_pr_trust" {
   }
 }
 
+# plan 用だけの信頼ポリシー。PR に加えて、main への push も許す(deploy-prod.yml の plan ジョブ用)
+# ci_pr_trust は ecom-ci-dbt と共通なので、そこには足さない(書き込みのロールに main の sub を許さないため)
+data "aws_iam_policy_document" "ci_plan_trust" {
+  # PR 用の信頼ポリシーをそのまま引き継ぐ
+  source_policy_documents = [data.aws_iam_policy_document.ci_pr_trust.json]
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    # 証明書を出す相手: GitHub の OIDC プロバイダ
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    # 証明書の宛先が AWS の STS であること
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    # main への push のジョブだけ(完全一致。ワイルドカードは使わない)
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+    }
+  }
+}
+
 # ---------- ロール本体 ----------
 resource "aws_iam_role" "ci_plan" {
   name = "ecom-ci-plan"
   # IAM の説明欄は日本語を受け付けないので英語で書く
-  description          = "GitHub Actions PR: terraform plan (read only). ADR 0017"
-  assume_role_policy   = data.aws_iam_policy_document.ci_pr_trust.json
+  description          = "GitHub Actions PR and main push: terraform plan (read only). ADR 0017"
+  assume_role_policy   = data.aws_iam_policy_document.ci_plan_trust.json
   max_session_duration = 3600 # 一時キーの期限は1時間(最短の既定値)
 }
 
