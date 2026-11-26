@@ -15,7 +15,7 @@
 |---|---|---|
 | `ecom-<環境>-ingest` | リプレイと、Raw への取り込み | `portfolio-admin`(ローカルの Airflow や手元の実行) |
 | `ecom-<環境>-transform` | dbt と Athena による Silver、Gold の作成 | `portfolio-admin`。prod だけ、GitHub の OIDC(`sub` は `environment:prod`)も追加(main のあとの prod の dbt) |
-| `ecom-ci-plan` | PR の `terraform plan`(dev、prod、global。`-lock=false`)。使うサービスの Describe / Get / List と、状態ファイルの読み取りだけ | GitHub の OIDC(PR 用の `sub`) |
+| `ecom-ci-plan` | PR の `terraform plan`(dev、prod、global。`-lock=false`)と、main への push 時の deploy-prod の plan(prod だけ)。使うサービスの Describe / Get / List と、状態ファイルの読み取りだけ | GitHub の OIDC(PR 用の `sub` と、main への push の `sub`。後者は 2026-11-27 に追加。信頼ポリシーは `ci_plan_trust`) |
 | `ecom-ci-dbt` | PR の `dbt build`。練習用の Glue DB(`ecom_ci_silver` と `ecom_ci_gold`)と `iceberg/ci/` だけに書ける。Bronze は dev を読むだけ。workgroup は `ecom-ci` | GitHub の OIDC(PR 用の `sub`) |
 | `ecom-prod-deployer` | main のあと、手動承認を経た prod への Terraform の実行(dbt は transform が流す) | GitHub の OIDC(`sub` は GitHub Environments の `prod`) |
 
@@ -61,7 +61,7 @@ prod の deployer は、状態ファイル用のバケットのうち `envs/prod
 - Athena は、実行した人(ロール)の権限で S3 を読み書きする。そのため、transform には、Athena の権限に加えて、S3 の権限も必要である。
 - IAM を操作する権限は、prod の deployer だけに限定し、対象を `ecom-prod-` で始まる名前に絞る(`ecom-dev-*` は触れない。`ecom-` だけの絞り方では、同じアカウントの dev も触れてしまうため)。さらに権限境界 `ecom-prod-boundary` を使い、deployer は枠の付いたロールしか作れず、枠と自分自身は変えられない(ADR 0017)。
 - CI のロールと権限境界は terraform/global に置き、CI が自分の権限を書き換えられないようにする(ADR 0017)。
-- OIDC の `sub` で、PR 用と prod 用を分ける。`ecom-ci-plan` と `ecom-ci-dbt` は PR 用の `sub` だけを許可し、prod の deployer は GitHub Environments の `prod` の `sub` だけを許可する(PR 用の `sub` は許可しない)。これで、承認を通らないジョブは prod のロールを借りられない。
+- OIDC の `sub` で、PR 用と prod 用を分ける。`ecom-ci-dbt` は PR 用の `sub` だけ、`ecom-ci-plan`(読むだけ)は PR 用と main への push の `sub` を許可し(信頼ポリシーは `ci_plan_trust` に分け、書き込みのロールに main の `sub` は入れない)、prod の deployer は GitHub Environments の `prod` の `sub` だけを許可する(PR 用の `sub` は許可しない)。これで、承認を通らないジョブは prod のロールを借りられない。
 - logs/ と quarantine/ は「置」にする。記録は、あとから書き換えたり消したりできないほうが、調査の証拠として信用できる。消すのは、S3 のライフサイクル(logs/ は 90日、quarantine/ は 30日)に任せる([error-handling.md](error-handling.md))。
 - アップロードは `aws s3 sync` で行う。sync は、送る先にすでにあるファイルの一覧を見るので、ingest には logs/ と quarantine/ の一覧の権限(`s3:ListBucket`)も要る。`--delete` は使わない(削除の権限がないため)。
 
