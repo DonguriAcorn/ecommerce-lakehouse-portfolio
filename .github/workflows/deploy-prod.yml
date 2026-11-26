@@ -1,0 +1,111 @@
+# main にマージされたあと、prod の Terraform を「承認してから」適用する
+name: deploy-prod
+
+# 動くきっかけ
+on:
+  push:
+    branches: [main]                 # main に入ったとき
+    paths:                           # prod に関係する変更だけ(docs だけの変更では動かさない)
+      - terraform/envs/prod/**
+      - terraform/modules/**
+      - .github/workflows/deploy-prod.yml
+  workflow_dispatch:                 # 手動でも動かせる
+
+# 同時に2つ動かさない(状態ファイルのロックの取り合いを避ける)。実行中のものは止めない
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+# このワークフローに許す権限: リポジトリを読むだけ
+permissions:
+  contents: read
+
+jobs:
+  # ジョブ1: 承認なし。変更の予定を作って保存し、画面に要約を出す
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write                # OIDC の証明書を発行させる(ロールを借りるのに必須)
+      contents: read
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}   # 変更があるか(apply ジョブに渡す)
+    steps:
+      - uses: actions/checkout@v5            # コードを取る
+      - uses: hashicorp/setup-terraform@v3   # terraform を入れる
+        with:
+          terraform_version: 1.15.5          # 手元と同じ版
+          terraform_wrapper: false           # 終了コードをそのまま受け取る
+      # 読むだけのロール(main への push の sub を許可済み)
+      - name: ecom-ci-plan を借りる
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecom-ci-plan
+          aws-region: ap-northeast-1
+          mask-aws-account-id: true          # アカウント ID をログで塗りつぶす
+      # 状態ファイルの場所を読み込む
+      - run: terraform init -input=false
+        working-directory: terraform/envs/prod
+      - name: plan を作って保存する
+        id: plan
+        working-directory: terraform/envs/prod
+        run: |
+          # -detailed-exitcode: 0=変更なし、2=変更あり、1=失敗
+          set +e
+          terraform plan -lock=false -input=false -detailed-exitcode -out=tfplan
+          code=$?
+          set -e
+          # 失敗ならここで止める
+          if [ "$code" = "1" ]; then exit 1; fi
+          # 変更の有無を、次のジョブに渡す
+          if [ "$code" = "2" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+          # 承認画面(Job Summary)に出す要約: 色なしの plan の文章
+          {
+            echo '## prod の plan'
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # 承認した内容そのものを、次のジョブに渡す(変更があるときだけ)
+      - name: 保存した plan を渡す
+        if: steps.plan.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/envs/prod/tfplan
+          retention-days: 1                  # アカウント ID が入りうるので、1日で消す
+
+  # ジョブ2: 変更があるときだけ。environment: prod で止まり、承認で動く
+  apply:
+    needs: plan
+    if: needs.plan.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    environment: prod                # ここで承認待ちになる(承認者は本人、main の枝だけ)
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.5
+      # sub が environment:prod のときだけ借りられるロール
+      - name: ecom-prod-deployer を借りる
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecom-prod-deployer
+          aws-region: ap-northeast-1
+          mask-aws-account-id: true
+      # 承認した plan を取ってくる
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/envs/prod
+      - run: terraform init -input=false
+        working-directory: terraform/envs/prod
+      # 保存した plan だけを適用する(作り直さない。状態が変わっていたら Terraform が拒否する)
+      - run: terraform apply -input=false tfplan
+        working-directory: terraform/envs/prod
