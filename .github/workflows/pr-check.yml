@@ -10,6 +10,40 @@ permissions:
   contents: read
 
 jobs:
+  # 判定: PR で変わったファイルから、重い検査(plan と dbt)を流すかを決める
+  # 流さない検査は「スキップ」になり、必須チェックとしては満たされる(未完了のまま詰まらない)
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      plan_dirs: ${{ steps.f.outputs.plan_dirs }}   # plan を流す場所(空白区切り)
+      dbt: ${{ steps.f.outputs.dbt }}               # dbt を流すか(true / false)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0                  # 土台の枝との差分を取るため、履歴を全部取る
+      - id: f
+        run: |
+          # PR の土台(main)から、この PR で変わったファイルの一覧
+          files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "$files"
+          # 一覧に、パターンに合うものがあるか
+          has() { echo "$files" | grep -qE "$1"; }
+          # このワークフロー自身が変わったら、全部流す(検査の変更を検査するため)
+          all=false; has '^\.github/workflows/pr-check\.yml$' && all=true
+          dirs=""
+          # global: global のコードが変わったとき
+          if $all || has '^terraform/global/'; then dirs="$dirs global"; fi
+          # dev / prod: その環境のコード、または共通のモジュールが変わったとき
+          if $all || has '^terraform/(envs/dev|modules)/'; then dirs="$dirs envs/dev"; fi
+          if $all || has '^terraform/(envs/prod|modules)/'; then dirs="$dirs envs/prod"; fi
+          echo "plan_dirs=$dirs" >> "$GITHUB_OUTPUT"
+          # dbt: dbt、取り込み、ライブラリ、Bronze の定義(modules)、CI の dbt ロール(ci_dbt.tf)が変わったとき
+          if $all || has '^(dbt/|ingestion/|pyproject\.toml$|uv\.lock$|terraform/modules/|terraform/global/ci_dbt\.tf$)'; then
+            echo "dbt=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dbt=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # 検査1: コードの書き方
   ruff:
     runs-on: ubuntu-latest  # GitHub が用意する使い捨ての Linux マシン
@@ -30,6 +64,7 @@ jobs:
 
   # 検査3: terraform plan(global、dev、prod の3か所)
   plan:
+    needs: changes
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # OIDC の証明書を発行させる(ロールを借りるのに必須)
@@ -40,13 +75,17 @@ jobs:
         dir: [global, envs/dev, envs/prod]   # 同じ手順を3か所で繰り返す
     env:
       TF_VAR_budget_alert_email: ci@example.com  # global の必須変数。plan 用のダミー値(apply はしない)
+    # 各ステップに同じ if を付ける。この場所に変更がなければ、全部スキップされてジョブは成功になる
     steps:
       - uses: actions/checkout@v5            # コードを取る
+        if: contains(needs.changes.outputs.plan_dirs, matrix.dir)
       - uses: hashicorp/setup-terraform@v3   # terraform を入れる
+        if: contains(needs.changes.outputs.plan_dirs, matrix.dir)
         with:
           terraform_version: 1.15.5          # 手元と同じ版
       # 読むだけのロール ecom-ci-plan の一時キー(1時間)を受け取る
       - name: ecom-ci-plan を借りる
+        if: contains(needs.changes.outputs.plan_dirs, matrix.dir)
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecom-ci-plan
@@ -54,13 +93,17 @@ jobs:
           mask-aws-account-id: true          # アカウント ID をログで塗りつぶす
       # 状態ファイルの場所を読み込む(-input=false: 聞かれて待ち続けない)
       - run: terraform init -input=false
+        if: contains(needs.changes.outputs.plan_dirs, matrix.dir)
         working-directory: terraform/${{ matrix.dir }}
       # 変更の予定を出す(-lock=false: 読むだけのロールはロックファイルを書けない)
       - run: terraform plan -lock=false -input=false
+        if: contains(needs.changes.outputs.plan_dirs, matrix.dir)
         working-directory: terraform/${{ matrix.dir }}
 
   # 検査4: dbt build(練習用の ecom_ci_silver / ecom_ci_gold に、3日分だけ作る)
   dbt:
+    needs: changes
+    if: needs.changes.outputs.dbt == 'true'   # dbt に関係する変更があるときだけ(なければスキップ = 必須チェックは満たされる)
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # OIDC の証明書を発行させる(ロールを借りるのに必須)
