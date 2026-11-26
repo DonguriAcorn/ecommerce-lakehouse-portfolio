@@ -33,7 +33,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - .pre-commit-config.yaml: コミットの前の gitleaks と ruff-check(`--fix` つき。ruff-format は入れない。版は uv.lock と同じ。`uv run pre-commit install` は、マシンごとに1回)
 - terraform/bootstrap: 状態ファイル用の S3 バケット
 - terraform/global: アカウント共通のリソース(budgets.tf、github_oidc.tf、ci_plan.tf、ci_dbt.tf、prod_boundary.tf、prod_deployer.tf。状態は S3 の global/terraform.tfstate)
-- .github/workflows: pr-check.yml(PR のチェック6つ: ruff、pytest、terraform plan の3か所、dbt build)
+- .github/workflows: pr-check.yml(PR のチェック6つ: ruff、pytest、terraform plan の3か所、dbt build)、deploy-prod.yml(main への push で、prod の plan を保存 → `environment: prod` の承認 → 保存した plan だけを `ecom-prod-deployer` で apply。変更がなければ apply は飛ぶ。2026-11-27)
 - terraform/modules/lakehouse_env: 環境ごとの定義(s3.tf、glue.tf、athena.tf、iam.tf、bronze.tf、variables.tf。variables.tf に `permissions_boundary` と `transform_oidc_*` を足した。dev は null)
 - terraform/envs/dev、terraform/envs/prod: main.tf(provider、backend、モジュールの呼び出し)。prod は dev の写しで、違いは state の key、タグ、`env` の3点(2026-11-25 に作った。状態は S3 の envs/prod/terraform.tfstate)
 - terraform/backups: 状態ファイルのバックアップ(Git の管理外。アカウント ID が入る)
@@ -83,6 +83,7 @@ S3 + Iceberg + Glue Data Catalog、Athena + dbt-athena、Airflow(ローカルの
 - 鮮度チェック(2026-11-15): `silver_freshness` は、毎日届く3表(orders_from_events、order_items、reviews)だけを見る。`end_date` が渡されないときはスキップ。
 - prod のデータ(2026-11-26): dev と同じ全期間を、`olist_backfill` を `env=prod` にして、120 日の窓7回で入れた。dev と差分 0。切り替えは dbt の `--target`、AWS のプロファイル(`ecom-prod-ingest` / `ecom-prod-transform`)、バケット名の3つを `env` に連動させる。`PII_SALT` は dev と同じ値(dev と prod でハッシュが一致する)。`silver_freshness` は毎日の運用用で、過去の窓では誤って失敗するため、backfill の dbt_test では除外する。
 - PR チェック(2026-11-27): `pr-check.yml` の6つ(ruff、pytest、plan の global / dev / prod、dbt)。dbt は接続先 `ci` で、dev の Bronze の 2016-09-04〜06 を読み、`ecom_ci_silver` / `ecom_ci_gold` に作る(マスタが 09-04 にしか届かないため、この日を含める。`silver_freshness` は除外)。`ecom_ci` は `concurrency` のグループ `ecom-ci` で1つずつ。plan の `TF_VAR_budget_alert_email` はダミー値。main には ruleset `protect-main`(PR と必須チェック6つ。承認 0、strict なし。Enforcement を Active にしないと効かない)。main へは直接 push できず、docs だけの変更も PR が要る。`ecom-ci-plan` に `iam:ListPolicies`、`iam:ListOpenIDConnectProviders`、lake の `s3:ListBucket` を足した(ListBucket がないと、Terraform は「バケットが消えた」と見なして作り直す plan を出す)。plan のジョブの緑は、`No changes.` を見て初めて意味がある。
+- prod のデプロイ(2026-11-27、フェーズ4の完了): `deploy-prod.yml` の plan は `ecom-ci-plan`(信頼ポリシー `ci_plan_trust` に main の `sub` を足した。`ecom-ci-dbt` は PR 用のまま)、apply は `ecom-prod-deployer`(`environment:prod`)。タグ `DeployCheck` で、承認 → 成功まで確かめた。deployer に `s3:ListBucket`(バケットの存在確認)と、条件なしの `iam:TagRole` / `iam:UntagRole` を足した(`iam:PermissionsBoundary` の条件は、タグの操作に効かないため)。次はフェーズ5。PR チェックをフォルダごとに流す改善は、区切りのあと。
 
 ## 運用メモ
 - 元データは data/olist/ にある(Git の管理外)。届くファイルは data/source/、Raw は data/raw/(どちらも Git の管理外。simulator と run_ingest.py で作り直せる)。
