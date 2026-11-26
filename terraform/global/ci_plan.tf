@@ -98,6 +98,27 @@ data "aws_iam_policy_document" "ci_plan" {
     resources = local.lake_bucket_arns
   }
 
+  # lake バケットが「あるか」を確かめる(HeadBucket)。これがないと、Terraform はバケットが消えたと見なして、作り直す plan を出す
+  # 対象はバケットそのものの ARN だけ。中のデータ(オブジェクトの中身)は読めない
+  statement {
+    sid       = "CheckLakeBucketExists"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = local.lake_bucket_arns
+  }
+
+  # prod の plan が、名前や url で「引く」ために必要な一覧(読むだけ)
+  # 一覧の操作はリソースを絞れないので、"*" になる。見えるのは名前などのメタデータだけ
+  statement {
+    sid    = "ListIamForLookups"
+    effect = "Allow"
+    actions = [
+      "iam:ListPolicies",               # 権限境界を、名前 ecom-prod-boundary で引く(envs/prod の data aws_iam_policy)
+      "iam:ListOpenIDConnectProviders", # OIDC プロバイダを、url で引く(envs/prod の data aws_iam_openid_connect_provider)
+    ]
+    resources = ["*"]
+  }
+
   # Glue のデータベースとテーブルの「定義」を読む(行のデータは Athena を通さないと読めない)
   statement {
     sid    = "ReadGlueDefinitions"
