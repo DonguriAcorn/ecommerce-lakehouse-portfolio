@@ -1,0 +1,90 @@
+# PR のときに、ruff と pytest を自動で流す(AWS は使わない)
+name: pr-check
+
+# 動くきっかけ: PR を出したとき・更新したとき
+on:
+  pull_request:
+
+# このワークフローに許す権限: リポジトリを読むだけ
+permissions:
+  contents: read
+
+jobs:
+  # 検査1: コードの書き方
+  ruff:
+    runs-on: ubuntu-latest  # GitHub が用意する使い捨ての Linux マシン
+    steps:
+      - uses: actions/checkout@v5       # リポジトリのコードをマシンに取ってくる
+      - uses: astral-sh/setup-uv@v6     # uv を入れる
+      - run: uv sync --locked           # uv.lock どおりにライブラリを入れる(ずれたら失敗)
+      - run: uv run ruff check .        # ruff で検査する(違反があれば失敗 = 赤)
+
+  # 検査2: テスト
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5       # コードを取る
+      - uses: astral-sh/setup-uv@v6     # uv を入れる
+      - run: uv sync --locked           # uv.lock どおりにライブラリを入れる
+      - run: uv run pytest              # テストを流す(1本でも落ちれば赤)
+
+  # 検査3: terraform plan(global、dev、prod の3か所)
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC の証明書を発行させる(ロールを借りるのに必須)
+      contents: read    # リポジトリは読むだけ
+    strategy:
+      fail-fast: false  # 1か所が失敗しても、残りの plan は最後まで流す
+      matrix:
+        dir: [global, envs/dev, envs/prod]   # 同じ手順を3か所で繰り返す
+    env:
+      TF_VAR_budget_alert_email: ci@example.com  # global の必須変数。plan 用のダミー値(apply はしない)
+    steps:
+      - uses: actions/checkout@v5            # コードを取る
+      - uses: hashicorp/setup-terraform@v3   # terraform を入れる
+        with:
+          terraform_version: 1.15.5          # 手元と同じ版
+      # 読むだけのロール ecom-ci-plan の一時キー(1時間)を受け取る
+      - name: ecom-ci-plan を借りる
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecom-ci-plan
+          aws-region: ap-northeast-1
+          mask-aws-account-id: true          # アカウント ID をログで塗りつぶす
+      # 状態ファイルの場所を読み込む(-input=false: 聞かれて待ち続けない)
+      - run: terraform init -input=false
+        working-directory: terraform/${{ matrix.dir }}
+      # 変更の予定を出す(-lock=false: 読むだけのロールはロックファイルを書けない)
+      - run: terraform plan -lock=false -input=false
+        working-directory: terraform/${{ matrix.dir }}
+
+  # 検査4: dbt build(練習用の ecom_ci_silver / ecom_ci_gold に、3日分だけ作る)
+  dbt:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC の証明書を発行させる(ロールを借りるのに必須)
+      contents: read    # リポジトリは読むだけ
+    concurrency:
+      group: ecom-ci              # このグループのジョブは1つずつ(ecom_ci が1つしかないため)
+      cancel-in-progress: false   # 動いているものは止めず、あとから来たほうを待たせる
+    env:
+      LAKE_BUCKET: ecom-lakehouse-dev-${{ secrets.AWS_ACCOUNT_ID }}  # バケット名に ID が入る。ログでは伏せ字になる
+      PII_SALT: ci-dummy-salt     # pii_hash が要るだけのダミー(CI のハッシュは誰とも照合しない)
+    steps:
+      - uses: actions/checkout@v5       # コードを取る
+      - uses: astral-sh/setup-uv@v6     # uv を入れる
+      - run: uv sync --locked           # uv.lock どおりにライブラリを入れる
+      # 書き込みが ecom_ci_* だけのロール ecom-ci-dbt の一時キー(1時間)を受け取る
+      - name: ecom-ci-dbt を借りる
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecom-ci-dbt
+          aws-region: ap-northeast-1
+          mask-aws-account-id: true     # アカウント ID をログで塗りつぶす
+      # 窓は 2016-09-04〜06。マスタ(顧客・商品など)が 09-04 に1回しか届かないため、この日を含める
+      # silver_freshness は毎日の運用用で、過去の窓では誤って失敗するので除外する
+      - run: >
+          uv run dbt build --project-dir dbt --profiles-dir dbt --target ci
+          --exclude silver_freshness
+          --vars '{start_date: "2016-09-04", end_date: "2016-09-06"}'
