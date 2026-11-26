@@ -27,6 +27,7 @@ provider "aws" {
       Project     = "ecommerce-lakehouse-portfolio"
       Environment = "prod"
       ManagedBy   = "terraform"
+      DeployCheck = "2026-11-27" # deploy-prod の承認経路を確かめるための印(確認後も残してよい)
     }
   }
 }
