@@ -80,6 +80,15 @@ data "aws_iam_policy_document" "prod_deployer" {
     resources = [local.prod_lake_arn]
   }
 
+  # バケットの存在確認(HeadBucket)に必要。ないと apply 後に「バケットが消えた」と見なされる
+  # 対象はバケットそのものだけ(/* なし)。オブジェクトの中身は読み書きできない
+  statement {
+    sid       = "HeadProdBucket"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [local.prod_lake_arn]
+  }
+
   # Glue: prod の DB とテーブルだけ
   statement {
     sid    = "ManageProdGlue"
@@ -130,8 +139,6 @@ data "aws_iam_policy_document" "prod_deployer" {
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
       "iam:PutRolePermissionsBoundary",
-      "iam:TagRole",
-      "iam:UntagRole",
     ]
     resources = [local.prod_role_arns]
 
@@ -140,6 +147,15 @@ data "aws_iam_policy_document" "prod_deployer" {
       variable = "iam:PermissionsBoundary"
       values   = [aws_iam_policy.prod_boundary.arn]
     }
+  }
+
+  # タグの付け外し: iam:PermissionsBoundary の条件キーがこの操作には付かないため、条件なしの別枠にする
+  # (タグは権限の判定に使っていないので、枠なしでも権限は広がらない。deployer 自身は下の Deny で除く)
+  statement {
+    sid       = "TagProdRoles"
+    effect    = "Allow"
+    actions   = ["iam:TagRole", "iam:UntagRole"]
+    resources = [local.prod_role_arns]
   }
 
   # IAM の読み取り: plan と refresh が、既存のロールと枠のポリシーを読むため
@@ -196,6 +212,8 @@ data "aws_iam_policy_document" "prod_deployer" {
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
       "iam:PutRolePermissionsBoundary",
+      "iam:TagRole",
+      "iam:UntagRole",
     ]
     resources = [local.prod_deployer_arn]
   }
