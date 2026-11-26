@@ -4,7 +4,7 @@ version: 2                                  # YAML の書式の版。2 で固定
 sources:
   - name: bronze                            # source の名前。SQL では source('bronze', ...) と書く
     database: awsdatacatalog                # Glue Data Catalog(profiles.yml の database と同じ)
-    schema: "ecom_{{ target.name }}_bronze" # 読む Glue DB。target.name は接続先の名前(いまは dev)なので ecom_dev_bronze になる
+    schema: "ecom_{{ 'dev' if target.name == 'ci' else target.name }}_bronze" # 読む Glue DB。target.name が dev なら ecom_dev_bronze。ci のときは dev の Bronze を読む(ci 用の Bronze はない)
     description: "Raw の Parquet を指す外部テーブル(Terraform の bronze.tf で管理)"  # 説明(dbt docs に出る)
     tables:
       - name: orders_events                 # テーブル名。ecom_dev_bronze.orders_events を指す(bronze.tf の name と同じ綴り)
