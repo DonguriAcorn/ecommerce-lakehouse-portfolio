@@ -1,0 +1,34 @@
+# pub_kpi_monthly の荷札(meta / tags)、説明、品質検査。公開用なので、列は contract で固定する
+version: 2
+
+models:
+  - name: pub_kpi_monthly
+    description: "公開用(ADR 0018)。1行 = 月 × 州。売上と注文数。is_counted が true の注文だけを数える。平均注文額はアプリが gmv / orders で出す"
+    meta:
+      owner: data-eng
+      update_frequency: daily
+    config:
+      tags: [gold, pub]                      # 公開用のシール。`--select tag:pub` で3表だけを流せる
+      contract:
+        enforced: true                     # 列の名前・順番・型が違えば止める(PII の列が混ざる事故も防ぐ)
+    data_tests:
+      - unique_combination:                  # 月 × 州の組が重複しない(粒度の証拠)
+          arguments:
+            columns: ["year_month", "customer_state"]
+    columns:
+      - name: year_month
+        data_type: varchar
+        description: "購入した月(YYYY-MM)"
+        data_tests: [not_null]
+      - name: customer_state
+        data_type: varchar
+        description: "購入した時点の顧客の州(2文字の略号)"
+        data_tests: [not_null]
+      - name: gmv
+        data_type: decimal(38,2)
+        description: "売上(商品代金 + 送料の合計)。{{ doc('gmv') }}"
+        data_tests: [not_null]
+      - name: orders
+        data_type: bigint
+        description: "売上に数える注文の数"
+        data_tests: [not_null]

@@ -243,6 +243,9 @@ airflow/logs/
 # Data (raw files are not committed)
 data/
 *.parquet
+# 公開用の集計だけは Git に入れる(ADR 0018。行単位のデータは置かない)
+!app/data/
+!app/data/*.parquet
 
 # OS / editor
 .DS_Store

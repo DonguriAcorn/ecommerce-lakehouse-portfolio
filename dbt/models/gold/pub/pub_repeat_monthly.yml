@@ -1,0 +1,34 @@
+# pub_repeat_monthly の荷札(meta / tags)、説明、品質検査
+version: 2
+
+models:
+  - name: pub_repeat_monthly
+    description: "公開用(ADR 0018)。1行 = 月 × 州。買った本人の数と、そのうち全期間で2注文以上の本人の数。リピート率はアプリが repeat_buyers / buyers で出す。{{ doc('repeat_rate') }}"
+    meta:
+      owner: data-eng
+      update_frequency: daily
+    config:
+      tags: [gold, pub]                      # 公開用のシール
+      contract:
+        enforced: true                     # 列の名前・順番・型が違えば止める(本人の ID が混ざる事故を防ぐ)
+    data_tests:
+      - unique_combination:                  # 月 × 州の組が重複しない
+          arguments:
+            columns: ["year_month", "customer_state"]
+    columns:
+      - name: year_month
+        data_type: varchar
+        description: "購入した月(YYYY-MM)"
+        data_tests: [not_null]
+      - name: customer_state
+        data_type: varchar
+        description: "購入した時点の顧客の州"
+        data_tests: [not_null]
+      - name: buyers
+        data_type: bigint
+        description: "その月に注文した本人の数(状態を問わない)"
+        data_tests: [not_null]
+      - name: repeat_buyers
+        data_type: bigint
+        description: "buyers のうち、全期間で2注文以上の本人の数"
+        data_tests: [not_null]
