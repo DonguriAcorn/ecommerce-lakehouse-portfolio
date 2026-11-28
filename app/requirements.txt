@@ -1,0 +1,9 @@
+# Streamlit Community Cloud 用の依存(アプリが使うものだけ)。
+# 版は uv.lock と同じにして、手元で動いた組み合わせを再現する。
+# pyproject.toml の dbt-athena と boto3 は、パイプライン用なので入れない。
+streamlit==1.67.0
+duckdb==2.0.1
+pandas==3.1.0
+pyarrow==26.0.0
+pyyaml==6.0.3
+altair==6.3.0

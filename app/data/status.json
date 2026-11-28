@@ -1,0 +1,11 @@
+{
+  "exported_at": "2026-11-28T01:20:31Z",
+  "source_env": "prod",
+  "latest_purchase_date": "2018-10-17",
+  "row_counts": {
+    "pub_kpi_monthly": 558,
+    "pub_repeat_monthly": 565,
+    "pub_repeat_yearly": 75,
+    "pub_category_monthly": 1282
+  }
+}
