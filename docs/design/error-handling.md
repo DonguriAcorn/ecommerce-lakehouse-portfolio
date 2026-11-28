@@ -107,6 +107,7 @@
   - `_error_codes`(例: `UNPARSABLE_TIMESTAMP,UNKNOWN_EVENT_TYPE`)、`_error_columns`、`_batch_id`、`_quarantined_at`
 - 隔離した行の直し方: 届いたファイルを直して(実務では、送る側に直してもらって)、同じ期間を再実行する。
 - 隔離が0件の日は、ファイルを作らない。
+- S3 へは、Airflow のタスク `upload_logs` が、取り込みログと一緒に `quarantine/` へ上げる(取り込みが失敗した日も上げる。ADR 0019)。
 
 ## 保存期間
 

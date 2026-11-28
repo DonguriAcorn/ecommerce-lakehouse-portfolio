@@ -91,7 +91,8 @@ with DAG(
         append_env=True,
     )
 
-    # 取り込みログ(UTC の今日の run_date)を S3 の logs/ へ。取り込みが失敗しても動かす
+    # 取り込みログと隔離ファイル(UTC の今日の run_date)を S3 の logs/ と quarantine/ へ
+    # 取り込みが失敗しても動かす
     upload_logs = BashOperator(
         task_id="upload_logs",
         bash_command=BUCKET_PREFIX + f"cd {PROJECT} && {PY} -m ingestion.upload_logs",

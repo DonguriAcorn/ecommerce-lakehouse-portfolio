@@ -35,3 +35,11 @@ models:
       - name: avg_review_score
         data_type: double
         description: "平均の星(1〜5)。明細ごとに、その注文の星を数える。レビューのない注文は数えない。全部ない組は空"
+      - name: review_score_sum
+        data_type: bigint
+        description: "星の合計(明細ごとに、その注文の星を足す)。平均の星を月やカテゴリをまたいで出すときは sum(review_score_sum) / sum(reviewed_items)"
+        data_tests: [not_null]
+      - name: reviewed_items
+        data_type: bigint
+        description: "星のある明細の数(review_score_sum の分母)"
+        data_tests: [not_null]
