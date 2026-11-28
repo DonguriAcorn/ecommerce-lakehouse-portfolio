@@ -6,7 +6,7 @@ from decimal import Decimal
 import pyarrow as pa
 import pytest
 
-from ingestion.export_pub import build_status, build_table, check_columns
+from ingestion.export_pub import build_status, build_table, check_columns, check_not_empty
 
 
 def test_build_table_types_and_nulls():
@@ -42,6 +42,17 @@ def test_check_columns_stops_on_forbidden():
 def test_check_columns_allows_public_columns():
     """公開してよい列だけなら、止まらない。"""
     check_columns("pub_kpi_monthly", ["year_month", "customer_state", "gmv", "orders"])
+
+
+def test_check_not_empty_stops_on_zero_rows():
+    """0 行なら、表の名前つきで止まる。"""
+    with pytest.raises(RuntimeError, match="pub_kpi_monthly"):
+        check_not_empty("pub_kpi_monthly", 0)
+
+
+def test_check_not_empty_allows_rows():
+    """1 行でもあれば、止まらない。"""
+    check_not_empty("pub_kpi_monthly", 1)
 
 
 def test_build_status():

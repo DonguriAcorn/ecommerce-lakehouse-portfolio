@@ -1,7 +1,8 @@
-"""その日(run_date)の取り込みログを、S3 の logs/ へ上げる。
+"""その日(run_date)の取り込みログと隔離ファイルを、S3 の logs/ と quarantine/ へ上げる。
 
-ローカルの data/logs/ingest/.../run_date=<日>/batch_id=<id>/events.jsonl を、
-同じ形のキーで S3 の logs/ へ置く。キーはファイルの場所から決まるので、
+ローカルの data/logs/ingest/.../run_date=<日>/batch_id=<id>/events.jsonl を S3 の logs/ へ、
+data/quarantine/olist/<表>/run_date=<日>/batch_id=<id>/<表>.parquet を S3 の quarantine/ へ、
+同じ形のキーで置く。キーはファイルの場所から決まるので、
 同じ日を2回上げても同じキーを上書きするだけ(冪等)。
 """
 
@@ -12,9 +13,11 @@ from pathlib import Path
 
 import boto3
 
-# ローカルのログの置き場所と、S3 の中の接頭辞
+# ローカルの置き場所と、S3 の中の接頭辞(ログと隔離ファイルの2組)
 LOG_DIR = Path("data/logs")
 S3_PREFIX = "logs"
+QUARANTINE_DIR = Path("data/quarantine")
+QUARANTINE_PREFIX = "quarantine"
 
 
 def find_log_files(log_dir: Path, run_date: str) -> list[Path]:
@@ -24,10 +27,18 @@ def find_log_files(log_dir: Path, run_date: str) -> list[Path]:
     return sorted(log_dir.glob(f"ingest/*/*/run_date={run_date}/*/events.jsonl"))
 
 
-def s3_key(log_dir: Path, file: Path) -> str:
+def find_quarantine_files(quarantine_dir: Path, run_date: str) -> list[Path]:
+    """run_date のフォルダの下にある隔離ファイル(Parquet)を、名前順で返す。"""
+    # データセット → 表 → run_date → batch_id の下の .parquet を探す
+    # (置き場所は quarantine.py の write_quarantine が決める形と同じ)
+    return sorted(quarantine_dir.glob(f"*/*/run_date={run_date}/*/*.parquet"))
+
+
+def s3_key(base_dir: Path, file: Path, prefix: str = S3_PREFIX) -> str:
     """ローカルのファイルの場所から、S3 のキーを作る。"""
     # 例: logs/ingest/olist/orders_events/run_date=2026-11-14/batch_id=.../events.jsonl
-    return f"{S3_PREFIX}/{file.relative_to(log_dir).as_posix()}"
+    # 例: quarantine/olist/orders_events/run_date=2026-11-14/batch_id=.../orders_events.parquet
+    return f"{prefix}/{file.relative_to(base_dir).as_posix()}"
 
 
 def main() -> int:
@@ -53,11 +64,19 @@ def main() -> int:
         s3.upload_file(str(file), bucket, key)
         print(f"{file} -> s3://{bucket}/{key}")
 
+    # 隔離ファイルも同じ日のものを上げる。正常な日は 0 個がふつうなので、0 個でも失敗にしない
+    q_files = find_quarantine_files(QUARANTINE_DIR, args.run_date)
+    for file in q_files:
+        key = s3_key(QUARANTINE_DIR, file, QUARANTINE_PREFIX)
+        s3.upload_file(str(file), bucket, key)
+        print(f"{file} -> s3://{bucket}/{key}")
+    print(f"run_date={args.run_date}: 隔離ファイル {len(q_files)} 個を上げました")
+
     # ログが1つもないのは、取り込みが動く前に落ちたなどの異常。気づけるよう失敗にする
     if not files:
         print(f"run_date={args.run_date}: 上げるログがありません")
         return 1
-    print(f"run_date={args.run_date}: {len(files)} ファイルを上げました")
+    print(f"run_date={args.run_date}: ログ {len(files)} ファイルを上げました")
     return 0
 
 

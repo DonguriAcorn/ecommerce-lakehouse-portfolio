@@ -90,7 +90,8 @@ with DAG(
         append_env=True,
     )
 
-    # 取り込みログ(その日 = UTC の今日の run_date)を S3 の logs/ へ上げる。ここも ingest ロール
+    # 取り込みログと隔離ファイル(その日 = UTC の今日の run_date)を、
+    # S3 の logs/ と quarantine/ へ上げる。ここも ingest ロール
     # trigger_rule="all_done": 取り込みが失敗しても動かす(失敗した日のログこそ必要なため)
     upload_logs = BashOperator(
         task_id="upload_logs",

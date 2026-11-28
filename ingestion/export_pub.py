@@ -78,10 +78,18 @@ def check_columns(table_name: str, names: list[str]) -> None:
         raise RuntimeError(f"{table_name} に公開できない列があります: {sorted(bad)}")
 
 
+def check_not_empty(table_name: str, num_rows: int) -> None:
+    """0 行の表は、書く前に止める(Gold の作り直しの途中や失敗で、空の表を公開しないため)。"""
+    if num_rows == 0:
+        raise RuntimeError(
+            f"{table_name} が 0 行です。Gold を確かめてから export し直してください"
+        )
+
+
 def build_status(
     env: str, row_counts: dict[str, int], latest_purchase_date: str, now: datetime
 ) -> dict:
-    """健康状態ページ用の status.json の中身を作る。"""
+    """サイドバーの表示用の status.json の中身を作る。"""
     return {
         "exported_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),  # export した時刻(UTC)
         "source_env": env,  # どの環境の Gold から作ったか
@@ -117,7 +125,7 @@ def run(athena, workgroup: str, sql: str) -> tuple[list[dict], list[list[str | N
 
 
 def main() -> int:
-    """流れ: 引数 → 3表を読んで Parquet に書く → 最新の購入日を読む → status.json を書く。"""
+    """流れ: 引数 → 4表を読んで確かめる → まとめて Parquet に書く → 最新の購入日 → status.json。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", default="dev", choices=["dev", "prod"], help="読む Gold の環境")
     parser.add_argument("--out-dir", default="app/data", help="書き出す場所")
@@ -130,18 +138,25 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     athena = boto3.client("athena")  # 認証は AWS_PROFILE の transform ロール
 
-    # 3表を1つずつ、読む → 確かめる → Parquet に書く
-    row_counts = {}
+    # 1段目: 4表を全部読んで確かめる。どれか1つでもだめなら、何も書かずに止める
+    # (途中で止まって、新しい表と古い表が app/data/ に混ざるのを防ぐ)
+    checked = {}
     for table_name, order_by in TABLES.items():
         sql = f"select * from {database}.{table_name} order by {order_by}"
         column_info, rows = run(athena, workgroup, sql)
         table = build_table(column_info, rows)
-        check_columns(table_name, table.column_names)
+        check_columns(table_name, table.column_names)  # 公開できない列がないか
+        check_not_empty(table_name, table.num_rows)  # 空の表でないか
+        checked[table_name] = table
+
+    # 2段目: 全部通ったので、Parquet に書く
+    row_counts = {}
+    for table_name, table in checked.items():
         pq.write_table(table, out_dir / f"{table_name}.parquet", compression="zstd")
         row_counts[table_name] = table.num_rows
         print(f"[{table_name}] {table.num_rows} 行を書いた")
 
-    # 健康状態ページ用: データの中の最新の購入日
+    # サイドバーの表示用: データの中の最新の購入日
     sql = f"select cast(max(purchase_date) as varchar) from {database}.fact_orders"
     _, latest = run(athena, workgroup, sql)
     status = build_status(args.env, row_counts, latest[0][0], datetime.now(timezone.utc))
