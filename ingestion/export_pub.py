@@ -1,4 +1,4 @@
-"""公開用の pub_ の3表を Athena で読み、app/data/ に Parquet と status.json を書く(ADR 0018)。
+"""公開用の pub_ の4表を Athena で読み、app/data/ に Parquet と status.json を書く(ADR 0018)。
 
 実行: AWS_PROFILE=ecom-dev-transform uv run python -m ingestion.export_pub --env dev
 """
@@ -18,6 +18,7 @@ import pyarrow.parquet as pq
 TABLES = {
     "pub_kpi_monthly": "year_month, customer_state",
     "pub_repeat_monthly": "year_month, customer_state",
+    "pub_repeat_yearly": "year, customer_state",  # 年別のリピート率用(月別は足せないため)
     "pub_category_monthly": "year_month, category_name",
 }
 # 公開してはいけない列。dbt の contract でも止まるが、書く直前にもう一度確かめる(二重の守り)

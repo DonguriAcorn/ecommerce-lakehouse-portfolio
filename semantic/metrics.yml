@@ -1,0 +1,124 @@
+# セマンティックレイヤー Lv2: 指標の定義(handoff §9)
+# 「売上」「リピート率」などの意味と計算式を、ここ1か所に書く。
+# ダッシュボード(app/)と AI アナリスト(フェーズ6)は、どちらも semantic/metrics.py の
+# query_metric() を通して、この定義から数字を出す。画面や AI に計算式を書かない。
+#
+# 計算式の決まり(平均の平均にしないため)
+# - expression は、表の列を sum() で集めてから割る形にする(例: sum(gmv) / sum(orders))。
+#   州ごと・月ごとの割合をさらに平均すると、正しい値にならない。
+# - 割り算の分母は nullif(..., 0) で包む(0 で割ると、エラーではなく空にする)。
+# - 書き方は DuckDB の SQL(アプリは Parquet を DuckDB で読む)。
+
+version: 1
+
+# Parquet の置き場所(リポジトリの直下からの相対パス)。export_pub.py が書く場所と同じ
+data_dir: app/data
+
+# 時間の細かさ。month は year_month(YYYY-MM)、year は year(YYYY)の列で持つ。
+# quarter と year は、月の表から足し上げて作れる(rollup: true の指標だけ)
+time_grains: [month, quarter, year]
+
+# 材料の表(dbt の pub_ モデルを export した Parquet)。
+# grain = 表の時間の細かさ、time_column = 時間の列、dimensions = 切り口に使える列
+tables:
+  pub_kpi_monthly:
+    grain: month
+    time_column: year_month
+    dimensions: [customer_state]
+    description: "1行 = 月 × 州。売上と注文数(is_counted の注文だけ)"
+  pub_category_monthly:
+    grain: month
+    time_column: year_month
+    dimensions: [category_name]
+    description: "1行 = 月 × カテゴリ。売上、販売数、星の合計とレビュー数(is_counted の明細だけ)"
+  pub_repeat_monthly:
+    grain: month
+    time_column: year_month
+    dimensions: [customer_state]
+    description: "1行 = 月 × 州。買った本人の数と、全期間で2注文以上の本人の数(状態を問わない)"
+  pub_repeat_yearly:
+    grain: year
+    time_column: year
+    dimensions: [customer_state]
+    description: "1行 = 年 × 州。pub_repeat_monthly を年で数え直したもの(月別の人数は足せないため)"
+
+# 切り口の表示名(画面の見出しや、AI への説明に使う)
+dimensions:
+  customer_state:
+    label: 州
+    description: "購入した時点の顧客の州(2文字の略号。例: SP、RJ)"
+  category_name:
+    label: カテゴリ
+    description: "商品カテゴリ(英訳 → 元の名前 → unknown)"
+
+# 指標。項目の意味:
+#   name        プログラムと AI が使う名前(英小文字)
+#   label       画面に出す名前
+#   description 意味(用語集 dbt/models/gold/glossary.md と同じ定義)
+#   glossary    用語集の項目名(定義の原本。食い違ったら用語集に合わせる)
+#   unit        単位(BRL = ブラジルレアル、count = 件・人、ratio = 割合、score = 星)
+#   expression  計算式(DuckDB の SQL。sum() で集めてから割る)
+#   sources     使う表。上から順に、求める時間の細かさと切り口を満たす最初の表を使う
+#   rollup      true なら、月の表を足し上げて四半期・年を出してよい
+#               (人数を重複を除いて数えた指標は、足すと二重に数えるので false)
+metrics:
+  - name: gmv
+    label: 売上(GMV)
+    description: "明細の商品代金 + 送料の合計。canceled と unavailable は外し、進行中の注文は含める。通貨はレアルのまま"
+    glossary: gmv
+    unit: BRL
+    expression: sum(gmv)
+    sources: [pub_kpi_monthly, pub_category_monthly]   # 州で切るなら kpi、カテゴリで切るなら category
+    rollup: true
+
+  - name: orders
+    label: 注文数
+    description: "売上に数える注文の数(canceled と unavailable は外す)"
+    glossary: order_count
+    unit: count
+    expression: sum(orders)
+    sources: [pub_kpi_monthly]
+    rollup: true
+
+  - name: aov
+    label: 平均注文額
+    description: "売上 ÷ 注文数。分子も分母も、売上に数える注文だけ"
+    glossary: avg_order_amount
+    unit: BRL
+    expression: sum(gmv) / nullif(sum(orders), 0)
+    sources: [pub_kpi_monthly]
+    rollup: true
+
+  - name: repeat_rate
+    label: リピート率
+    description: "その期間に注文した本人のうち、全期間で2注文以上した本人の割合。本人は customer_unique_id で数え、注文の状態は問わない"
+    glossary: repeat_rate
+    unit: ratio
+    expression: sum(repeat_buyers) / nullif(sum(buyers), 0)
+    sources: [pub_repeat_monthly, pub_repeat_yearly]   # 月は monthly、年は yearly。四半期は出せない
+    rollup: false                                      # buyers は重複を除いた人数なので、月を足して年にしない
+
+  - name: avg_review_score
+    label: 平均の星
+    description: "明細ごとに、その注文の星(1〜5)を数えた平均。レビューのない注文は数えない"
+    unit: score
+    expression: sum(review_score_sum) / nullif(sum(reviewed_items), 0)
+    sources: [pub_category_monthly]
+    rollup: true                                       # 星の合計と件数は、足し上げても正しい
+
+  # ここから下は、画面で「何件・何人の上での値か」を見せるための補助の指標
+  - name: items_sold
+    label: 販売数
+    description: "売れた明細の数(1明細 = 1商品)。canceled と unavailable は外す"
+    unit: count
+    expression: sum(items_sold)
+    sources: [pub_category_monthly]
+    rollup: true
+
+  - name: buyers
+    label: 購入者数
+    description: "その期間に注文した本人の数(customer_unique_id で数える。注文の状態は問わない)。リピート率の分母"
+    unit: count
+    expression: sum(buyers)
+    sources: [pub_repeat_monthly, pub_repeat_yearly]
+    rollup: false                                      # 重複を除いた人数なので、月を足して年にしない
